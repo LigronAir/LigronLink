@@ -1,36 +1,94 @@
 export default {
-  async fetch(request, env, ctx) {
 
-    const url = new URL(request.url);
+    async fetch(request, env, ctx) {
 
-    // =====================================================
-    // GET /api/v1/status
-    // =====================================================
-    if (request.method === "GET" && url.pathname === "/api/v1/status") {
+        const url = new URL(request.url);
 
-      return Response.json({
-        service: "LigronLink Registry",
-        version: "0.2.0",
-        status: "ONLINE"
-      });
+        // =====================================================
+        // GET /api/v1/status
+        // =====================================================
+
+        if (request.method === "GET" &&
+            url.pathname === "/api/v1/status") {
+
+            return Response.json({
+
+                service: "LigronLink Registry",
+
+                version: "0.3.0",
+
+                status: "ONLINE"
+
+            });
+
+        }
+
+        // =====================================================
+        // POST /api/v1/register
+        // =====================================================
+
+        if (request.method === "POST" &&
+            url.pathname === "/api/v1/register") {
+
+            try {
+
+                const data = await request.json();
+
+                return Response.json({
+
+                    success: true,
+
+                    message: "Datos recibidos correctamente.",
+
+                    received: {
+
+                        nombre: data.nombre,
+
+                        email: data.email
+
+                    }
+
+                });
+
+            }
+            catch (error) {
+
+                return Response.json({
+
+                    success: false,
+
+                    error: "JSON no válido."
+
+                },
+                {
+                    status: 400
+                });
+
+            }
+
+        }
+
+        // =====================================================
+        // Endpoint inexistente
+        // =====================================================
+
+        return Response.json({
+
+            success: false,
+
+            error: {
+
+                code: "NOT_FOUND",
+
+                message: "Endpoint not found"
+
+            }
+
+        },
+        {
+            status: 404
+        });
 
     }
 
-    // =====================================================
-    // Endpoint inexistente
-    // =====================================================
-    return Response.json(
-      {
-        success: false,
-        error: {
-          code: "NOT_FOUND",
-          message: "Endpoint not found"
-        }
-      },
-      {
-        status: 404
-      }
-    );
-
-  }
 };
