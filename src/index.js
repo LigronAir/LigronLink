@@ -1,15 +1,35 @@
+const corsHeaders = {
+    "Access-Control-Allow-Origin": "https://ligronair.tv",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type"
+};
+
 export default {
 
     async fetch(request, env, ctx) {
 
         const url = new URL(request.url);
 
-        // =====================================================
-        // GET /api/v1/status
-        // =====================================================
+        // ==========================================
+        // CORS PRE-FLIGHT
+        // ==========================================
 
-        if (request.method === "GET" &&
-            url.pathname === "/api/v1/status") {
+        if (request.method === "OPTIONS") {
+
+            return new Response(null, {
+                headers: corsHeaders
+            });
+
+        }
+
+        // ==========================================
+        // STATUS
+        // ==========================================
+
+        if (
+            request.method === "GET" &&
+            url.pathname === "/api/v1/status"
+        ) {
 
             return Response.json({
 
@@ -19,74 +39,53 @@ export default {
 
                 status: "ONLINE"
 
+            }, {
+                headers: corsHeaders
             });
 
         }
 
-        // =====================================================
-        // POST /api/v1/register
-        // =====================================================
+        // ==========================================
+        // REGISTER
+        // ==========================================
 
-        if (request.method === "POST" &&
-            url.pathname === "/api/v1/register") {
+        if (
+            request.method === "POST" &&
+            url.pathname === "/api/v1/register"
+        ) {
 
-            try {
+            const data = await request.json();
 
-                const data = await request.json();
+            return Response.json({
 
-                return Response.json({
+                success: true,
 
-                    success: true,
+                message: "Datos recibidos correctamente.",
 
-                    message: "Datos recibidos correctamente.",
+                received: data
 
-                    received: {
-
-                        nombre: data.nombre,
-
-                        email: data.email
-
-                    }
-
-                });
-
-            }
-            catch (error) {
-
-                return Response.json({
-
-                    success: false,
-
-                    error: "JSON no válido."
-
-                },
-                {
-                    status: 400
-                });
-
-            }
+            }, {
+                headers: corsHeaders
+            });
 
         }
 
-        // =====================================================
-        // Endpoint inexistente
-        // =====================================================
+        // ==========================================
+        // 404
+        // ==========================================
 
         return Response.json({
 
             success: false,
 
-            error: {
+            error: "Endpoint not found"
 
-                code: "NOT_FOUND",
+        }, {
 
-                message: "Endpoint not found"
+            status: 404,
 
-            }
+            headers: corsHeaders
 
-        },
-        {
-            status: 404
         });
 
     }
