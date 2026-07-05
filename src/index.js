@@ -1,3 +1,11 @@
+// ==========================================================
+// LigronLink
+// src/index.js
+// Router principal
+// ==========================================================
+
+import { register } from "./api/register.js";
+
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -10,9 +18,9 @@ export default {
 
         const url = new URL(request.url);
 
-        // ==========================================
-        // CORS PRE-FLIGHT
-        // ==========================================
+        // ==================================================
+        // CORS
+        // ==================================================
 
         if (request.method === "OPTIONS") {
 
@@ -22,9 +30,9 @@ export default {
 
         }
 
-        // ==========================================
+        // ==================================================
         // STATUS
-        // ==========================================
+        // ==================================================
 
         if (
             request.method === "GET" &&
@@ -35,7 +43,7 @@ export default {
 
                 service: "LigronLink Registry",
 
-                version: "0.3.0",
+                version: "0.4.0",
 
                 status: "ONLINE"
 
@@ -45,34 +53,22 @@ export default {
 
         }
 
-        // ==========================================
+        // ==================================================
         // REGISTER
-        // ==========================================
+        // ==================================================
 
         if (
             request.method === "POST" &&
             url.pathname === "/api/v1/register"
         ) {
 
-            const data = await request.json();
-
-            return Response.json({
-
-                success: true,
-
-                message: "Datos recibidos correctamente.",
-
-                received: data
-
-            }, {
-                headers: corsHeaders
-            });
+            return await register(request, env);
 
         }
 
-        // ==========================================
-        // 404
-        // ==========================================
+        // ==================================================
+        // NOT FOUND
+        // ==================================================
 
         return Response.json({
 
