@@ -1,6 +1,6 @@
 // ==========================================================
 // LigronLink
-// src/database/users.js
+// database/users.js
 // Gestión de usuarios en D1
 // ==========================================================
 
@@ -19,7 +19,9 @@ export async function createUser(db, user) {
 
     if (existente) {
 
-        throw new Error("Ya existe una cuenta asociada a ese correo electrónico.");
+        throw new Error(
+            "Ya existe una cuenta asociada a ese correo electrónico."
+        );
 
     }
 
@@ -60,5 +62,32 @@ export async function createUser(db, user) {
 
     )
     .run();
+
+}
+
+// ==========================================================
+// Buscar usuario por email
+// ==========================================================
+
+export async function findUserByEmail(db, email) {
+
+    return await db
+        .prepare(
+
+            `
+            SELECT
+                id,
+                uuid,
+                nombre,
+                email,
+                password_hash,
+                estado
+            FROM usuarios
+            WHERE email = ?1
+            `
+
+        )
+        .bind(email.toLowerCase())
+        .first();
 
 }

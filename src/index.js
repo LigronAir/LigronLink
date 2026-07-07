@@ -5,6 +5,7 @@
 // ==========================================================
 
 import { register } from "./api/register.js";
+import { login } from "./api/login.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -43,7 +44,7 @@ export default {
 
                 service: "LigronLink Registry",
 
-                version: "0.4.0",
+                version: "0.5.0",
 
                 status: "ONLINE"
 
@@ -63,6 +64,19 @@ export default {
         ) {
 
             return await register(request, env);
+
+        }
+
+        // ==================================================
+        // LOGIN
+        // ==================================================
+
+        if (
+            request.method === "POST" &&
+            url.pathname === "/api/v1/login"
+        ) {
+
+            return await login(request, env);
 
         }
 
