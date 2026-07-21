@@ -6,6 +6,8 @@
 
 import { register } from "./api/register.js";
 import { login } from "./api/login.js";
+import { deviceRegister } from "./api/deviceRegister.js";
+import { devicesGet } from "./api/devicesGet.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -77,6 +79,32 @@ export default {
         ) {
 
             return await login(request, env);
+
+        }
+
+        // ==================================================
+        // DEVICE REGISTER
+        // ==================================================
+
+        if (
+            request.method === "POST" &&
+            url.pathname === "/api/v1/device/register"
+        ) {
+
+            return await deviceRegister(request, env);
+
+        }
+
+        // ==================================================
+        // DEVICES LIST
+        // ==================================================
+
+        if (
+            request.method === "GET" &&
+            url.pathname === "/api/v1/devices"
+        ) {
+
+            return await devicesGet(request, env);
 
         }
 
