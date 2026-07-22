@@ -123,3 +123,33 @@ export async function findDevicesByUser(db, usuarioId) {
     return resultado.results;
 
 }
+
+// ==========================================================
+// ### FIX
+// Eliminar equipo
+// ==========================================================
+
+export async function deleteDevice(db, deviceId, usuarioId) {
+
+    const resultado = await db
+        .prepare(
+            `
+            DELETE FROM equipos
+            WHERE id = ?1
+              AND usuario_id = ?2
+            `
+        )
+        .bind(deviceId, usuarioId)
+        .run();
+
+    if (!resultado.meta || resultado.meta.changes === 0) {
+
+        throw new Error(
+            "No se pudo eliminar el equipo."
+        );
+
+    }
+
+    return true;
+
+}

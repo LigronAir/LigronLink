@@ -9,9 +9,13 @@ import { login } from "./api/login.js";
 import { deviceRegister } from "./api/deviceRegister.js";
 import { devicesGet } from "./api/devicesGet.js";
 
+// ### FIX
+import { deviceDelete } from "./api/deviceDelete.js";
+
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    // ### FIX
+    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type"
 };
 
@@ -105,6 +109,20 @@ export default {
         ) {
 
             return await devicesGet(request, env);
+
+        }
+
+        // ==================================================
+        // ### FIX
+        // DEVICE DELETE
+        // ==================================================
+
+        if (
+            request.method === "DELETE" &&
+            url.pathname.startsWith("/api/v1/device/")
+        ) {
+
+            return await deviceDelete(request, env);
 
         }
 
