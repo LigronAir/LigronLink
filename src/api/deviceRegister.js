@@ -3,7 +3,8 @@
 // API - Registrar Equipo
 // ==========================================================
 
-import { createDevice } from "../database/devices.js";
+// ### FIX
+import { registerOrUpdateDevice } from "../database/devices.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -50,6 +51,12 @@ export async function deviceRegister(request, env) {
 
         const uuid = body.uuid?.trim() || "";
 
+        // ### FIX
+        // Preparado para futuras autenticaciones desde Native.
+        // De momento se mantiene exactamente el comportamiento
+        // actual utilizando el usuario provisional.
+        const email = body.email?.trim() || "";
+
         // --------------------------------------------------
         // Validaciones
         // --------------------------------------------------
@@ -84,24 +91,45 @@ export async function deviceRegister(request, env) {
 
         }
 
+        if (!uuid) {
+
+            return Response.json(
+                {
+                    success: false,
+                    error: "Debe indicar un UUID."
+                },
+                {
+                    status: 400,
+                    headers: corsHeaders
+                }
+            );
+
+        }
+
         // --------------------------------------------------
         // Usuario provisional
         // --------------------------------------------------
 
         const usuarioId = 1;
 
+        // ### FIX
+        // Variable preparada para futuras versiones donde
+        // el usuario se resolverá mediante autenticación.
+        void email;
+
         // --------------------------------------------------
-        // Guardar equipo
+        // Registrar o actualizar equipo
         // --------------------------------------------------
 
-        await createDevice(env.DB, {
-
-            usuarioId,
-            tipo,
-            alias,
-            uuid
-
-        });
+        const resultado = await registerOrUpdateDevice(
+            env.DB,
+            {
+                usuarioId,
+                tipo,
+                alias,
+                uuid
+            }
+        );
 
         // --------------------------------------------------
         // OK
@@ -110,7 +138,12 @@ export async function deviceRegister(request, env) {
         return Response.json(
 
             {
-                success: true
+                success: true,
+
+                // ### FIX
+                created: resultado.created,
+                updated: resultado.updated
+
             },
 
             {

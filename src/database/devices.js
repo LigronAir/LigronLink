@@ -71,6 +71,76 @@ export async function createDevice(db, device) {
 }
 
 // ==========================================================
+// ### FIX
+// Registrar o actualizar un equipo existente.
+// Permite reutilizar un UUID ya registrado sin romper el
+// comportamiento de createDevice().
+// ==========================================================
+
+export async function registerOrUpdateDevice(db, device) {
+
+    const existente = await db
+        .prepare(
+            `
+            SELECT
+                id
+            FROM equipos
+            WHERE uuid = ?1
+            `
+        )
+        .bind(device.uuid)
+        .first();
+
+    // ------------------------------------------------------
+    // No existe -> crear
+    // ------------------------------------------------------
+
+    if (!existente) {
+
+        await createDevice(db, device);
+
+        return {
+
+            created: true,
+            updated: false
+
+        };
+
+    }
+
+    // ------------------------------------------------------
+    // Existe -> actualizar
+    // ------------------------------------------------------
+
+    await db
+        .prepare(
+            `
+            UPDATE equipos
+            SET
+                usuario_id = ?2,
+                tipo = ?3,
+                alias = ?4
+            WHERE uuid = ?1
+            `
+        )
+        .bind(
+            device.uuid,
+            device.usuarioId,
+            device.tipo,
+            device.alias
+        )
+        .run();
+
+    return {
+
+        created: false,
+        updated: true
+
+    };
+
+}
+
+// ==========================================================
 // Buscar equipo por UUID
 // ==========================================================
 
@@ -111,7 +181,7 @@ export async function findDevicesByUser(db, usuarioId) {
                 tipo,
                 alias,
                 estado,
-                fecha_creacion
+               fecha_creacion
             FROM equipos
             WHERE usuario_id = ?1
             ORDER BY alias ASC
