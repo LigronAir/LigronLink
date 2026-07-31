@@ -8,8 +8,8 @@ import { register } from "./api/register.js";
 import { login } from "./api/login.js";
 import { deviceRegister } from "./api/deviceRegister.js";
 import { devicesGet } from "./api/devicesGet.js";
-
 // ### FIX
+import { getPublicIp } from "./api/ip.js";
 import { deviceDelete } from "./api/deviceDelete.js";
 
 const corsHeaders = {
@@ -57,6 +57,20 @@ export default {
             }, {
                 headers: corsHeaders
             });
+
+        }
+
+        // ==================================================
+        // ### FIX
+        // PUBLIC IP
+        // ==================================================
+
+        if (
+            request.method === "GET" &&
+            url.pathname === "/api/v1/ip"
+        ) {
+
+            return await getPublicIp(request);
 
         }
 
