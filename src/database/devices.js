@@ -46,6 +46,8 @@ export async function createDevice(db, device) {
                 usuario_id,
                 tipo,
                 alias,
+                public_ip,
+                ultima_conexion,
                 fecha_creacion,
                 estado
             )
@@ -55,8 +57,10 @@ export async function createDevice(db, device) {
                 ?2,
                 ?3,
                 ?4,
+                ?5,
+                ?6,
                 datetime('now'),
-                'OFFLINE'
+                ?7
             )
             `
         )
@@ -64,7 +68,10 @@ export async function createDevice(db, device) {
             device.uuid,
             device.usuarioId,
             device.tipo,
-            device.alias
+            device.alias,
+            device.publicIp || null,
+            device.ultimaConexion || null,
+            device.estado || 'OFFLINE'
         )
         .run();
 
@@ -91,13 +98,35 @@ export async function registerOrUpdateDevice(db, device) {
         .bind(device.uuid)
         .first();
 
+    const ahora = new Date().toISOString();
+
     // ------------------------------------------------------
     // No existe -> crear
     // ------------------------------------------------------
 
     if (!existente) {
 
-        await createDevice(db, device);
+        await createDevice(db, {
+
+            ...device,
+
+            // ==================================================
+            // ### FIX
+            // Si llega desde Native, el nodo queda registrado
+            // como online desde el primer contacto.
+            // ==================================================
+
+            estado: device.estado || 'ONLINE',
+
+            // ==================================================
+            // ### FIX
+            // Si no se indica fecha de última conexión, se
+            // inicializa con la actual.
+            // ==================================================
+
+            ultimaConexion: device.ultimaConexion || ahora
+
+        });
 
         return {
 
@@ -119,7 +148,10 @@ export async function registerOrUpdateDevice(db, device) {
             SET
                 usuario_id = ?2,
                 tipo = ?3,
-                alias = ?4
+                alias = ?4,
+                public_ip = COALESCE(?5, public_ip),
+                ultima_conexion = COALESCE(?6, ultima_conexion),
+                estado = ?7
             WHERE uuid = ?1
             `
         )
@@ -127,7 +159,10 @@ export async function registerOrUpdateDevice(db, device) {
             device.uuid,
             device.usuarioId,
             device.tipo,
-            device.alias
+            device.alias,
+            device.publicIp || null,
+            device.ultimaConexion || null,
+            device.estado || 'ONLINE'
         )
         .run();
 
@@ -155,6 +190,8 @@ export async function findDeviceByUuid(db, uuid) {
                 usuario_id,
                 tipo,
                 alias,
+                public_ip,
+                ultima_conexion,
                 estado,
                 fecha_creacion
             FROM equipos
@@ -180,8 +217,10 @@ export async function findDevicesByUser(db, usuarioId) {
                 uuid,
                 tipo,
                 alias,
+                public_ip,
+                ultima_conexion,
                 estado,
-               fecha_creacion
+                fecha_creacion
             FROM equipos
             WHERE usuario_id = ?1
             ORDER BY alias ASC

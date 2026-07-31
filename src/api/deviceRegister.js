@@ -4,6 +4,7 @@
 // ==========================================================
 
 // ### FIX
+import { findUserByEmail } from "../database/users.js";
 import { registerOrUpdateDevice } from "../database/devices.js";
 
 const corsHeaders = {
@@ -51,11 +52,16 @@ export async function deviceRegister(request, env) {
 
         const uuid = body.uuid?.trim() || "";
 
+        const email = body.email?.trim().toLowerCase() || "";
+
+        // ==================================================
         // ### FIX
-        // Preparado para futuras autenticaciones desde Native.
-        // De momento se mantiene exactamente el comportamiento
-        // actual utilizando el usuario provisional.
-        const email = body.email?.trim() || "";
+        // Cloudflare conoce la IP pública real desde la que
+        // llega la conexión.
+        // ==================================================
+
+        const publicIp =
+            request.headers.get("CF-Connecting-IP") || "";
 
         // --------------------------------------------------
         // Validaciones
@@ -107,19 +113,43 @@ export async function deviceRegister(request, env) {
         }
 
         // --------------------------------------------------
-        // Usuario provisional
+        // Usuario
         // --------------------------------------------------
 
-        const usuarioId = 1;
+        let usuarioId = 1;
 
         // ### FIX
-        // Variable preparada para futuras versiones donde
-        // el usuario se resolverá mediante autenticación.
-        void email;
+        // Si Native envía email, se usa el usuario real.
+        // Si no llega email, se conserva el comportamiento
+        // provisional/manual existente.
+        if (email) {
+
+            const usuario = await findUserByEmail(env.DB, email);
+
+            if (!usuario) {
+
+                return Response.json(
+                    {
+                        success: false,
+                        error: "No se pudo resolver el usuario autenticado."
+                    },
+                    {
+                        status: 401,
+                        headers: corsHeaders
+                    }
+                );
+
+            }
+
+            usuarioId = usuario.id;
+
+        }
 
         // --------------------------------------------------
         // Registrar o actualizar equipo
         // --------------------------------------------------
+
+        const esNative = Boolean(email);
 
         const resultado = await registerOrUpdateDevice(
             env.DB,
@@ -127,7 +157,16 @@ export async function deviceRegister(request, env) {
                 usuarioId,
                 tipo,
                 alias,
-                uuid
+                uuid,
+
+                // ### FIX
+                publicIp: esNative ? publicIp : null,
+
+                // ### FIX
+                ultimaConexion: esNative ? new Date().toISOString() : null,
+
+                // ### FIX
+                estado: esNative ? "ONLINE" : "OFFLINE"
             }
         );
 
@@ -141,6 +180,11 @@ export async function deviceRegister(request, env) {
                 success: true,
 
                 // ### FIX
+                connected: esNative,
+
+                // ### FIX
+                publicIp: esNative ? publicIp : null,
+
                 created: resultado.created,
                 updated: resultado.updated
 
