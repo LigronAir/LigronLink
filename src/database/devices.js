@@ -71,17 +71,14 @@ export async function createDevice(db, device) {
             device.alias,
             device.publicIp || null,
             device.ultimaConexion || null,
-            device.estado || 'OFFLINE'
+            device.estado || "OFFLINE"
         )
         .run();
 
 }
 
 // ==========================================================
-// ### FIX
 // Registrar o actualizar un equipo existente.
-// Permite reutilizar un UUID ya registrado sin romper el
-// comportamiento de createDevice().
 // ==========================================================
 
 export async function registerOrUpdateDevice(db, device) {
@@ -110,21 +107,11 @@ export async function registerOrUpdateDevice(db, device) {
 
             ...device,
 
-            // ==================================================
-            // ### FIX
-            // Si llega desde Native, el nodo queda registrado
-            // como online desde el primer contacto.
-            // ==================================================
+            estado:
+                device.estado || "ONLINE",
 
-            estado: device.estado || 'ONLINE',
-
-            // ==================================================
-            // ### FIX
-            // Si no se indica fecha de última conexión, se
-            // inicializa con la actual.
-            // ==================================================
-
-            ultimaConexion: device.ultimaConexion || ahora
+            ultimaConexion:
+                device.ultimaConexion || ahora
 
         });
 
@@ -161,8 +148,16 @@ export async function registerOrUpdateDevice(db, device) {
             device.tipo,
             device.alias,
             device.publicIp || null,
-            device.ultimaConexion || null,
-            device.estado || 'ONLINE'
+
+            // ==================================================
+            // ### FIX
+            // Si Native no envía la fecha, utilizamos el
+            // momento actual del registro.
+            // ==================================================
+
+            device.ultimaConexion || ahora,
+
+            device.estado || "ONLINE"
         )
         .run();
 
@@ -234,7 +229,6 @@ export async function findDevicesByUser(db, usuarioId) {
 }
 
 // ==========================================================
-// ### FIX
 // Eliminar equipo
 // ==========================================================
 
