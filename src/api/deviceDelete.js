@@ -4,6 +4,7 @@
 // ==========================================================
 
 import { deleteDevice } from "../database/devices.js";
+import { findUserByEmail } from "../database/users.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -20,25 +21,104 @@ export async function deviceDelete(request, env) {
     try {
 
         // --------------------------------------------------
-        // Usuario provisional
-        // --------------------------------------------------
-
-        const usuarioId = 1;
-
-        // --------------------------------------------------
-        // Obtener ID desde la URL
+        // Obtener parámetros
         // --------------------------------------------------
 
         const url = new URL(request.url);
 
-        const partes = url.pathname.split("/");
+        const partes =
+            url.pathname.split("/");
 
-        const deviceId = Number(partes[4]);
+        const deviceId =
+            Number(partes[4]);
+
+        const email =
+            url.searchParams
+                .get("email")
+                ?.trim()
+                .toLowerCase();
 
         if (!deviceId) {
 
-            throw new Error(
-                "ID de equipo no válido."
+            return Response.json(
+
+                {
+
+                    success: false,
+
+                    error: "ID de equipo no válido."
+
+                },
+
+                {
+
+                    status: 400,
+
+                    headers: corsHeaders
+
+                }
+
+            );
+
+        }
+
+        if (!email) {
+
+            return Response.json(
+
+                {
+
+                    success: false,
+
+                    error: "Debe indicar el correo."
+
+                },
+
+                {
+
+                    status: 400,
+
+                    headers: corsHeaders
+
+                }
+
+            );
+
+        }
+
+        // --------------------------------------------------
+        // Resolver usuario
+        // --------------------------------------------------
+
+        const usuario =
+            await findUserByEmail(
+
+                env.DB,
+
+                email
+
+            );
+
+        if (!usuario) {
+
+            return Response.json(
+
+                {
+
+                    success: false,
+
+                    error: "Usuario no encontrado."
+
+                },
+
+                {
+
+                    status: 404,
+
+                    headers: corsHeaders
+
+                }
+
             );
 
         }
@@ -50,8 +130,10 @@ export async function deviceDelete(request, env) {
         await deleteDevice(
 
             env.DB,
+
             deviceId,
-            usuarioId
+
+            usuario.id
 
         );
 
