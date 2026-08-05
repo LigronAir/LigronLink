@@ -11,6 +11,7 @@ import { devicesGet } from "./api/devicesGet.js";
 // ### FIX
 import { getPublicIp } from "./api/ip.js";
 import { deviceDelete } from "./api/deviceDelete.js";
+import { deviceOffline } from "./api/deviceOffline.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -112,6 +113,19 @@ export default {
             return await deviceRegister(request, env);
 
         }
+        // ==================================================
+        // DEVICE OFFLINE
+        // ==================================================
+
+        if (
+            request.method === "POST" &&
+            url.pathname === "/api/v1/device/offline"
+        ) {
+
+            return await deviceOffline(request, env);
+
+        }
+
 
         // ==================================================
         // DEVICES LIST

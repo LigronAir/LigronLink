@@ -171,6 +171,31 @@ export async function registerOrUpdateDevice(db, device) {
 }
 
 // ==========================================================
+// ### FIX
+// Actualizar únicamente el estado de presencia del equipo.
+// No modifica identidad, usuario, alias ni dirección IP.
+// ==========================================================
+
+export async function setDeviceStatus(db, uuid, estado) {
+
+    await db
+        .prepare(
+            `
+            UPDATE equipos
+            SET
+                estado = ?2
+            WHERE uuid = ?1
+            `
+        )
+        .bind(
+            uuid,
+            estado
+        )
+        .run();
+
+}
+
+// ==========================================================
 // Buscar equipo por UUID
 // ==========================================================
 
