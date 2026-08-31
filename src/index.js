@@ -12,6 +12,8 @@ import { devicesGet } from "./api/devicesGet.js";
 import { getPublicIp } from "./api/ip.js";
 import { deviceDelete } from "./api/deviceDelete.js";
 import { deviceOffline } from "./api/deviceOffline.js";
+import { srtReceivers } from "./api/srtReceivers.js";
+import { srtDestinations } from "./api/srtDestinations.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -113,6 +115,7 @@ export default {
             return await deviceRegister(request, env);
 
         }
+
         // ==================================================
         // DEVICE OFFLINE
         // ==================================================
@@ -126,6 +129,31 @@ export default {
 
         }
 
+        // ==================================================
+        // SRT RECEIVERS
+        // ==================================================
+
+        if (
+            request.method === "POST" &&
+            url.pathname === "/api/v1/srt/receivers"
+        ) {
+
+            return await srtReceivers(request, env);
+
+        }
+
+        // ==================================================
+        // SRT DESTINATIONS
+        // ==================================================
+
+        if (
+            request.method === "GET" &&
+            url.pathname === "/api/v1/srt/destinations"
+        ) {
+
+            return await srtDestinations(request, env);
+
+        }
 
         // ==================================================
         // DEVICES LIST
