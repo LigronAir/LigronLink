@@ -14,6 +14,8 @@ import { deviceDelete } from "./api/deviceDelete.js";
 import { deviceOffline } from "./api/deviceOffline.js";
 import { srtReceivers } from "./api/srtReceivers.js";
 import { srtDestinations } from "./api/srtDestinations.js";
+import { srtAllocate } from "./api/srtAllocate.js";
+import { srtRelease } from "./api/srtRelease.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -152,6 +154,34 @@ export default {
         ) {
 
             return await srtDestinations(request, env);
+
+        }
+
+        // ==================================================
+        // ### FIX
+        // SRT ALLOCATE
+        // ==================================================
+
+        if (
+            request.method === "POST" &&
+            url.pathname === "/api/v1/srt/allocate"
+        ) {
+
+            return await srtAllocate(request, env);
+
+        }
+
+        // ==================================================
+        // ### FIX
+        // SRT RELEASE
+        // ==================================================
+
+        if (
+            request.method === "POST" &&
+            url.pathname === "/api/v1/srt/release"
+        ) {
+
+            return await srtRelease(request, env);
 
         }
 

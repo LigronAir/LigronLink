@@ -4,7 +4,10 @@
 // ==========================================================
 
 import { findUserByEmail } from "../database/users.js";
-import { findAvailableSrtDestinations } from "../database/srtDestinations.js";
+import {
+    findAvailableSrtDestinations,
+    findAvailableSrtDevices
+} from "../database/srtDestinations.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -115,6 +118,24 @@ export async function srtDestinations(request, env) {
         // Obtener destinos utilizables
         // --------------------------------------------------
 
+        // ### FIX
+        // La UI de LigronPi debe elegir equipos, no mochilas.
+        const deviceRows =
+            await findAvailableSrtDevices(
+                env.DB,
+                usuario.id
+            );
+
+        const devices =
+            deviceRows.map((row) => ({
+                device_uuid: row.equipo_uuid,
+                device_alias: row.device_alias,
+                available_receivers: Number(row.available_receivers || 0)
+            }));
+
+        // ### FIX
+        // Campo técnico conservado por compatibilidad temporal.
+        // LigronPi nuevo no debe usarlo para la selección del operador.
         const rows =
             await findAvailableSrtDestinations(
                 env.DB,
@@ -146,6 +167,8 @@ export async function srtDestinations(request, env) {
         return Response.json(
             {
                 success: true,
+                // ### FIX
+                devices,
                 destinations
             },
             {
