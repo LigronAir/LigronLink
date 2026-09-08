@@ -304,7 +304,11 @@ export async function srtReceivers(request, env) {
 
             }
 
-            if (!["FREE", "BUSY", "OFFLINE"].includes(estado)) {
+            // ### FIX
+            // RESERVED permite distinguir en LigronLink un receptor
+            // retenido para reenganche de una Pi frente a uno libre,
+            // ocupado o apagado.
+            if (!["FREE", "BUSY", "RESERVED", "OFFLINE"].includes(estado)) {
 
                 return Response.json(
                     {

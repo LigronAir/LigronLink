@@ -130,6 +130,36 @@ export async function replaceSrtDestinations(db, device, receivers) {
 
 // ==========================================================
 // ### FIX
+// Resumen de receptores SRT por equipo para el dashboard web.
+// ==========================================================
+
+export async function findSrtReceiverSummaryByUser(db, usuarioId) {
+
+    const resultado = await db
+        .prepare(
+            `
+            SELECT
+                equipo_uuid,
+                COUNT(*) AS total,
+                SUM(CASE WHEN estado = 'FREE' THEN 1 ELSE 0 END) AS free,
+                SUM(CASE WHEN estado = 'BUSY' THEN 1 ELSE 0 END) AS busy,
+                SUM(CASE WHEN estado = 'RESERVED' THEN 1 ELSE 0 END) AS reserved,
+                SUM(CASE WHEN estado = 'OFFLINE' THEN 1 ELSE 0 END) AS offline,
+                MAX(ultima_actualizacion) AS last_update
+            FROM srt_destinos
+            WHERE usuario_id = ?1
+            GROUP BY equipo_uuid
+            `
+        )
+        .bind(usuarioId)
+        .all();
+
+    return resultado.results;
+
+}
+
+// ==========================================================
+// ### FIX
 // Obtener equipos LigronAir con receptores libres agrupados.
 // ==========================================================
 

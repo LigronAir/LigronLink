@@ -8,6 +8,9 @@ import { findDevicesByUser } from "../database/devices.js";
 // ### FIX
 import { findUserByEmail } from "../database/users.js";
 
+// ### FIX
+import { findSrtReceiverSummaryByUser } from "../database/srtDestinations.js";
+
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
     "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
@@ -80,11 +83,50 @@ export async function devicesGet(request, env) {
         // Obtener equipos
         // --------------------------------------------------
 
-        const devices =
+        const devicesRaw =
             await findDevicesByUser(
                 env.DB,
                 usuario.id
             );
+
+        // ### FIX
+        // Añadir estado agregado de receptores SRT para que la web
+        // pueda visualizar disponibilidad real de Native sin pedir
+        // al operador que entre en LigronPi.
+        const srtRows =
+            await findSrtReceiverSummaryByUser(
+                env.DB,
+                usuario.id
+            );
+
+        const srtByDevice =
+            new Map(
+                srtRows.map((row) => [
+                    row.equipo_uuid,
+                    {
+                        total: Number(row.total || 0),
+                        free: Number(row.free || 0),
+                        busy: Number(row.busy || 0),
+                        reserved: Number(row.reserved || 0),
+                        offline: Number(row.offline || 0),
+                        last_update: row.last_update || null
+                    }
+                ])
+            );
+
+        const devices =
+            devicesRaw.map((device) => ({
+                ...device,
+                srt_receivers:
+                    srtByDevice.get(device.uuid) || {
+                        total: 0,
+                        free: 0,
+                        busy: 0,
+                        reserved: 0,
+                        offline: 0,
+                        last_update: null
+                    }
+            }));
 
         // --------------------------------------------------
         // Respuesta
