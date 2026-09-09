@@ -23,6 +23,14 @@ const corsHeaders = {
     "Access-Control-Allow-Headers": "Content-Type"
 };
 
+function isMissingRuntimeStatusTable(error) {
+
+    return String(error?.message || error)
+        .toLowerCase()
+        .includes("no such table: device_runtime_status");
+
+}
+
 // ==========================================================
 // GET /api/v1/devices
 // ==========================================================
@@ -143,11 +151,30 @@ export async function devicesGet(request, env) {
 
         // ### FIX
         // Estado operativo publicado por Pi/Native.
-        const runtimeRows =
-            await findRuntimeStatusByUser(
-                env.DB,
-                usuario.id
+        let runtimeRows = [];
+
+        try {
+
+            runtimeRows =
+                await findRuntimeStatusByUser(
+                    env.DB,
+                    usuario.id
+                );
+
+        }
+        catch (error) {
+
+            if (!isMissingRuntimeStatusTable(error)) {
+                throw error;
+            }
+
+            // La ausencia de esta tabla no debe impedir que Link muestre
+            // equipos, receptores y reservas ya existentes.
+            console.warn(
+                "device_runtime_status aún no existe; se omite runtime_status."
             );
+
+        }
 
         const runtimeByDevice =
             new Map(

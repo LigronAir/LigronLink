@@ -24,6 +24,14 @@ const VALID_STATES = [
     "ERROR"
 ];
 
+function isMissingRuntimeStatusTable(error) {
+
+    return String(error?.message || error)
+        .toLowerCase()
+        .includes("no such table: device_runtime_status");
+
+}
+
 // ==========================================================
 // POST /api/v1/device/status
 // ==========================================================
@@ -136,32 +144,53 @@ export async function deviceStatus(request, env) {
 
         }
 
-        await updateDeviceRuntimeStatus(
-            env.DB,
-            device,
-            {
-                runtime_state: runtimeState,
-                source_label: String(body.source_label || "").trim(),
-                target_device_uuid: String(body.target_device_uuid || "").trim(),
-                target_label: String(body.target_label || "").trim(),
-                target_srt_url: String(body.target_srt_url || "").trim(),
-                streaming: Boolean(body.streaming),
-                pipeline_active: Boolean(body.pipeline_active),
-                signal_available: Boolean(body.signal_available),
-                audio_state: String(body.audio_state || "").trim().toUpperCase()
-            }
-        );
-
-        // Un estado runtime válido también es un heartbeat del equipo.
+        // La presencia básica no depende de la tabla de telemetría.
+        // Así Pi sigue visible y renovando su heartbeat incluso si una D1
+        // antigua todavía no ha aplicado la migración opcional de runtime.
         await touchDevicePresence(
             env.DB,
             device.uuid,
             usuario.id
         );
 
+        let runtimeStatusAvailable = true;
+
+        try {
+
+            await updateDeviceRuntimeStatus(
+                env.DB,
+                device,
+                {
+                    runtime_state: runtimeState,
+                    source_label: String(body.source_label || "").trim(),
+                    target_device_uuid: String(body.target_device_uuid || "").trim(),
+                    target_label: String(body.target_label || "").trim(),
+                    target_srt_url: String(body.target_srt_url || "").trim(),
+                    streaming: Boolean(body.streaming),
+                    pipeline_active: Boolean(body.pipeline_active),
+                    signal_available: Boolean(body.signal_available),
+                    audio_state: String(body.audio_state || "").trim().toUpperCase()
+                }
+            );
+
+        }
+        catch (error) {
+
+            if (!isMissingRuntimeStatusTable(error)) {
+                throw error;
+            }
+
+            runtimeStatusAvailable = false;
+            console.warn(
+                "device_runtime_status aún no existe; presencia actualizada sin runtime."
+            );
+
+        }
+
         return Response.json(
             {
-                success: true
+                success: true,
+                runtime_status_available: runtimeStatusAvailable
             },
             {
                 headers: corsHeaders
