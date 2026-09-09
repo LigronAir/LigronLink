@@ -196,6 +196,137 @@ export async function setDeviceStatus(db, uuid, estado) {
 }
 
 // ==========================================================
+// Refrescar la presencia de un equipo que ha contactado con Link.
+// La fecha se usa como heartbeat: no se considera ONLINE un estado
+// almacenado antiguo si la aplicación dejó de avisar al apagarse.
+// ==========================================================
+
+export async function touchDevicePresence(db, uuid, usuarioId) {
+
+    await db
+        .prepare(
+            `
+            UPDATE equipos
+            SET
+                ultima_conexion = datetime('now'),
+                estado = 'ONLINE'
+            WHERE uuid = ?1
+              AND usuario_id = ?2
+            `
+        )
+        .bind(uuid, usuarioId)
+        .run();
+
+}
+
+// ==========================================================
+// ### FIX
+// Actualizar estado runtime operativo de un equipo.
+// Se usa para que Link visualice qué está haciendo Pi/Native
+// sin transportar vídeo.
+// ==========================================================
+
+export async function updateDeviceRuntimeStatus(db, device, runtime) {
+
+    await db
+        .prepare(
+            `
+            INSERT INTO device_runtime_status
+            (
+                device_uuid,
+                usuario_id,
+                runtime_state,
+                source_label,
+                target_device_uuid,
+                target_label,
+                target_srt_url,
+                streaming,
+                pipeline_active,
+                signal_available,
+                audio_state,
+                ultima_actualizacion
+            )
+            VALUES
+            (
+                ?1,
+                ?2,
+                ?3,
+                ?4,
+                ?5,
+                ?6,
+                ?7,
+                ?8,
+                ?9,
+                ?10,
+                ?11,
+                datetime('now')
+            )
+            ON CONFLICT(device_uuid)
+            DO UPDATE SET
+                usuario_id = excluded.usuario_id,
+                runtime_state = excluded.runtime_state,
+                source_label = excluded.source_label,
+                target_device_uuid = excluded.target_device_uuid,
+                target_label = excluded.target_label,
+                target_srt_url = excluded.target_srt_url,
+                streaming = excluded.streaming,
+                pipeline_active = excluded.pipeline_active,
+                signal_available = excluded.signal_available,
+                audio_state = excluded.audio_state,
+                ultima_actualizacion = datetime('now')
+            `
+        )
+        .bind(
+            device.uuid,
+            device.usuario_id,
+            runtime.runtime_state,
+            runtime.source_label || null,
+            runtime.target_device_uuid || null,
+            runtime.target_label || null,
+            runtime.target_srt_url || null,
+            runtime.streaming ? 1 : 0,
+            runtime.pipeline_active ? 1 : 0,
+            runtime.signal_available ? 1 : 0,
+            runtime.audio_state || null
+        )
+        .run();
+
+}
+
+// ==========================================================
+// ### FIX
+// Obtener estados runtime por usuario.
+// ==========================================================
+
+export async function findRuntimeStatusByUser(db, usuarioId) {
+
+    const resultado = await db
+        .prepare(
+            `
+            SELECT
+                device_uuid,
+                runtime_state,
+                source_label,
+                target_device_uuid,
+                target_label,
+                target_srt_url,
+                streaming,
+                pipeline_active,
+                signal_available,
+                audio_state,
+                ultima_actualizacion
+            FROM device_runtime_status
+            WHERE usuario_id = ?1
+            `
+        )
+        .bind(usuarioId)
+        .all();
+
+    return resultado.results;
+
+}
+
+// ==========================================================
 // Buscar equipo por UUID
 // ==========================================================
 
@@ -239,7 +370,15 @@ export async function findDevicesByUser(db, usuarioId) {
                 alias,
                 public_ip,
                 ultima_conexion,
-                estado,
+                CASE
+                    -- La presencia expira si no se recibe heartbeat.
+                    -- No se borra el equipo ni sus reservas: sólo deja
+                    -- de mostrarse y de poder usarse como conectado.
+                    WHEN UPPER(estado) = 'ONLINE'
+                     AND datetime(ultima_conexion) >= datetime('now', '-75 seconds')
+                        THEN 'ONLINE'
+                    ELSE 'OFFLINE'
+                END AS estado,
                 fecha_creacion
             FROM equipos
             WHERE usuario_id = ?1

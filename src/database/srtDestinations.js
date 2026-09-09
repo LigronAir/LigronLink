@@ -160,6 +160,41 @@ export async function findSrtReceiverSummaryByUser(db, usuarioId) {
 
 // ==========================================================
 // ### FIX
+// Lista completa de receptores SRT por usuario para desplegable web.
+// ==========================================================
+
+export async function findSrtReceiversByUser(db, usuarioId) {
+
+    const resultado = await db
+        .prepare(
+            `
+            SELECT
+                id,
+                equipo_uuid,
+                source_id,
+                nombre,
+                host,
+                port,
+                mode,
+                estado,
+                reservado_por_uuid,
+                ultima_actualizacion
+            FROM srt_destinos
+            WHERE usuario_id = ?1
+            ORDER BY
+                equipo_uuid ASC,
+                source_id ASC
+            `
+        )
+        .bind(usuarioId)
+        .all();
+
+    return resultado.results;
+
+}
+
+// ==========================================================
+// ### FIX
 // Obtener equipos LigronAir con receptores libres agrupados.
 // ==========================================================
 
@@ -179,6 +214,7 @@ export async function findAvailableSrtDevices(db, usuarioId) {
               AND s.estado = 'FREE'
               AND e.usuario_id = ?1
               AND UPPER(e.estado) = 'ONLINE'
+              AND datetime(e.ultima_conexion) >= datetime('now', '-75 seconds')
               AND LOWER(TRIM(e.tipo)) IN (
                   'ligronair',
                   'ligronair native',
@@ -230,6 +266,7 @@ export async function findAvailableSrtDestinations(db, usuarioId) {
               AND s.estado = 'FREE'
               AND e.usuario_id = ?1
               AND UPPER(e.estado) = 'ONLINE'
+              AND datetime(e.ultima_conexion) >= datetime('now', '-75 seconds')
               AND LOWER(TRIM(e.tipo)) IN (
                   'ligronair',
                   'ligronair native',
@@ -276,6 +313,7 @@ export async function allocateSrtDestination(db, usuarioId, piUuid, deviceUuid) 
                   AND s.estado = 'FREE'
                   AND e.usuario_id = ?1
                   AND UPPER(e.estado) = 'ONLINE'
+                  AND datetime(e.ultima_conexion) >= datetime('now', '-75 seconds')
                   AND LOWER(TRIM(e.tipo)) IN (
                       'ligronair',
                       'ligronair native',

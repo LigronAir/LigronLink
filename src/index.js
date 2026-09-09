@@ -12,6 +12,8 @@ import { devicesGet } from "./api/devicesGet.js";
 import { getPublicIp } from "./api/ip.js";
 import { deviceDelete } from "./api/deviceDelete.js";
 import { deviceOffline } from "./api/deviceOffline.js";
+// ### FIX
+import { deviceStatus } from "./api/deviceStatus.js";
 import { srtReceivers } from "./api/srtReceivers.js";
 import { srtDestinations } from "./api/srtDestinations.js";
 import { srtAllocate } from "./api/srtAllocate.js";
@@ -154,6 +156,20 @@ export default {
         ) {
 
             return await srtDestinations(request, env);
+
+        }
+
+        // ==================================================
+        // ### FIX
+        // DEVICE RUNTIME STATUS
+        // ==================================================
+
+        if (
+            request.method === "POST" &&
+            url.pathname === "/api/v1/device/status"
+        ) {
+
+            return await deviceStatus(request, env);
 
         }
 

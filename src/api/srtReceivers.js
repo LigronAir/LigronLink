@@ -4,7 +4,10 @@
 // ==========================================================
 
 import { findUserByEmail } from "../database/users.js";
-import { findDeviceByUuid } from "../database/devices.js";
+import {
+    findDeviceByUuid,
+    touchDevicePresence
+} from "../database/devices.js";
 import { replaceSrtDestinations } from "../database/srtDestinations.js";
 
 const corsHeaders = {
@@ -379,23 +382,11 @@ export async function srtReceivers(request, env) {
                 normalizados
             );
 
-        await env.DB
-            .prepare(
-                `
-                UPDATE equipos
-                SET
-                    ultima_conexion = ?2,
-                    estado = 'ONLINE'
-                WHERE uuid = ?1
-                  AND usuario_id = ?3
-                `
-            )
-            .bind(
-                device.uuid,
-                new Date().toISOString(),
-                usuario.id
-            )
-            .run();
+        await touchDevicePresence(
+            env.DB,
+            device.uuid,
+            usuario.id
+        );
 
         // --------------------------------------------------
         // OK

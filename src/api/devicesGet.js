@@ -3,13 +3,19 @@
 // API - Obtener equipos del usuario
 // ==========================================================
 
-import { findDevicesByUser } from "../database/devices.js";
+import {
+    findDevicesByUser,
+    findRuntimeStatusByUser
+} from "../database/devices.js";
 
 // ### FIX
 import { findUserByEmail } from "../database/users.js";
 
 // ### FIX
-import { findSrtReceiverSummaryByUser } from "../database/srtDestinations.js";
+import {
+    findSrtReceiverSummaryByUser,
+    findSrtReceiversByUser
+} from "../database/srtDestinations.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -99,6 +105,69 @@ export async function devicesGet(request, env) {
                 usuario.id
             );
 
+        // ### FIX
+        // Detalle de cajas/puertos para desplegable en la web.
+        const receiverRows =
+            await findSrtReceiversByUser(
+                env.DB,
+                usuario.id
+            );
+
+        const receiversByDevice =
+            new Map();
+
+        for (const receiver of receiverRows) {
+
+            const key =
+                receiver.equipo_uuid;
+
+            if (!receiversByDevice.has(key)) {
+
+                receiversByDevice.set(key, []);
+
+            }
+
+            receiversByDevice.get(key).push({
+                id: receiver.id,
+                source_id: receiver.source_id,
+                name: receiver.nombre,
+                host: receiver.host,
+                port: receiver.port,
+                mode: receiver.mode,
+                state: receiver.estado,
+                reserved_by: receiver.reservado_por_uuid,
+                last_update: receiver.ultima_actualizacion
+            });
+
+        }
+
+        // ### FIX
+        // Estado operativo publicado por Pi/Native.
+        const runtimeRows =
+            await findRuntimeStatusByUser(
+                env.DB,
+                usuario.id
+            );
+
+        const runtimeByDevice =
+            new Map(
+                runtimeRows.map((row) => [
+                    row.device_uuid,
+                    {
+                        runtime_state: row.runtime_state,
+                        source_label: row.source_label,
+                        target_device_uuid: row.target_device_uuid,
+                        target_label: row.target_label,
+                        target_srt_url: row.target_srt_url,
+                        streaming: Boolean(row.streaming),
+                        pipeline_active: Boolean(row.pipeline_active),
+                        signal_available: Boolean(row.signal_available),
+                        audio_state: row.audio_state,
+                        last_update: row.ultima_actualizacion
+                    }
+                ])
+            );
+
         const srtByDevice =
             new Map(
                 srtRows.map((row) => [
@@ -125,7 +194,11 @@ export async function devicesGet(request, env) {
                         reserved: 0,
                         offline: 0,
                         last_update: null
-                    }
+                    },
+                srt_receiver_list:
+                    receiversByDevice.get(device.uuid) || [],
+                runtime_status:
+                    runtimeByDevice.get(device.uuid) || null
             }));
 
         // --------------------------------------------------
