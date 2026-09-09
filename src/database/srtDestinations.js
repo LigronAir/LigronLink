@@ -22,11 +22,20 @@ export async function replaceSrtDestinations(db, device, receivers) {
             `
             UPDATE srt_destinos
             SET
-                -- ### FIX
-                -- Una reserva hecha por LigronLink no debe desaparecer
-                -- simplemente porque Native publique un snapshot.
+                -- Una reserva se conserva sólo mientras el Pi que la
+                -- solicitó siga presente. Así una reserva legítima soporta
+                -- un nuevo snapshot de Native, pero una reserva abandonada
+                -- vuelve a quedar disponible al siguiente heartbeat.
                 estado = CASE
-                    WHEN estado = 'RESERVED' THEN 'RESERVED'
+                    WHEN estado = 'RESERVED'
+                     AND EXISTS (
+                        SELECT 1
+                        FROM equipos AS pi
+                        WHERE pi.uuid = srt_destinos.reservado_por_uuid
+                          AND pi.usuario_id = srt_destinos.usuario_id
+                          AND UPPER(pi.estado) = 'ONLINE'
+                          AND datetime(pi.ultima_conexion) >= datetime('now', '-75 seconds')
+                     ) THEN 'RESERVED'
                     ELSE 'OFFLINE'
                 END,
                 ultima_actualizacion = datetime('now')
@@ -82,19 +91,34 @@ export async function replaceSrtDestinations(db, device, receivers) {
                     host = excluded.host,
                     port = excluded.port,
                     mode = excluded.mode,
-                    -- ### FIX
-                    -- Si el receptor está RESERVED en Link y Native lo
-                    -- sigue publicando como FREE, se conserva la reserva.
-                    -- Si Native lo publica BUSY/OFFLINE, se respeta Native.
+                    -- Una reserva de Link prevalece sobre FREE sólo si su Pi
+                    -- continúa con presencia reciente. Nunca se eternizan
+                    -- reservas de equipos apagados o de pruebas anteriores.
                     estado = CASE
                         WHEN srt_destinos.estado = 'RESERVED'
                          AND excluded.estado = 'FREE'
+                         AND EXISTS (
+                            SELECT 1
+                            FROM equipos AS pi
+                            WHERE pi.uuid = srt_destinos.reservado_por_uuid
+                              AND pi.usuario_id = srt_destinos.usuario_id
+                              AND UPPER(pi.estado) = 'ONLINE'
+                              AND datetime(pi.ultima_conexion) >= datetime('now', '-75 seconds')
+                         )
                             THEN 'RESERVED'
                         ELSE excluded.estado
                     END,
                     reservado_por_uuid = CASE
                         WHEN srt_destinos.estado = 'RESERVED'
                          AND excluded.estado = 'FREE'
+                         AND EXISTS (
+                            SELECT 1
+                            FROM equipos AS pi
+                            WHERE pi.uuid = srt_destinos.reservado_por_uuid
+                              AND pi.usuario_id = srt_destinos.usuario_id
+                              AND UPPER(pi.estado) = 'ONLINE'
+                              AND datetime(pi.ultima_conexion) >= datetime('now', '-75 seconds')
+                         )
                             THEN srt_destinos.reservado_por_uuid
                         ELSE NULL
                     END,
@@ -292,7 +316,7 @@ export async function findAvailableSrtDestinations(db, usuarioId) {
 // Reservar atómicamente un receptor FREE de un LigronAir.
 // ==========================================================
 
-export async function allocateSrtDestination(db, usuarioId, piUuid, deviceUuid) {
+export async function allocateSrtDestination(db, usuarioId, piUuid, deviceUuid, sourceId = null) {
 
     const resultado = await db
         .prepare(
@@ -310,6 +334,7 @@ export async function allocateSrtDestination(db, usuarioId, piUuid, deviceUuid) 
                     ON e.uuid = s.equipo_uuid
                 WHERE s.usuario_id = ?1
                   AND s.equipo_uuid = ?3
+                  AND (?4 IS NULL OR s.source_id = ?4)
                   AND s.estado = 'FREE'
                   AND e.usuario_id = ?1
                   AND UPPER(e.estado) = 'ONLINE'
@@ -342,7 +367,8 @@ export async function allocateSrtDestination(db, usuarioId, piUuid, deviceUuid) 
         .bind(
             usuarioId,
             piUuid,
-            deviceUuid
+            deviceUuid,
+            sourceId
         )
         .first();
 

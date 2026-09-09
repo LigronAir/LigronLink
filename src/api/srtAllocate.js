@@ -63,6 +63,11 @@ export async function srtAllocate(request, env) {
         const deviceUuid =
             body.device_uuid?.trim() || "";
 
+        const sourceId =
+            body.source_id === undefined || body.source_id === null
+                ? null
+                : Number(body.source_id);
+
         if (!email || !piUuid || !deviceUuid) {
 
             return Response.json(
@@ -76,6 +81,13 @@ export async function srtAllocate(request, env) {
                 }
             );
 
+        }
+
+        if (sourceId !== null && (!Number.isInteger(sourceId) || sourceId < 1 || sourceId > 50)) {
+            return Response.json(
+                { success: false, error: "source_id inválido." },
+                { status: 400, headers: corsHeaders }
+            );
         }
 
         const usuario =
@@ -179,7 +191,8 @@ export async function srtAllocate(request, env) {
                 env.DB,
                 usuario.id,
                 piUuid,
-                deviceUuid
+                deviceUuid,
+                sourceId
             );
 
         if (!assignment) {
