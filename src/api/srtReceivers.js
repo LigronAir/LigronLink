@@ -9,6 +9,7 @@ import {
     touchDevicePresence
 } from "../database/devices.js";
 import { replaceSrtDestinations } from "../database/srtDestinations.js";
+import { findLinkedPiStatuses } from "../database/peerStatus.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -399,7 +400,8 @@ export async function srtReceivers(request, env) {
                 device_alias: device.alias,
                 host_default: device.public_ip || null,
                 receivers: guardados,
-                count: guardados.length
+                count: guardados.length,
+                linked_pis: await findLinkedPiStatuses(env.DB, usuario.id, device.uuid)
             },
             {
                 headers: corsHeaders

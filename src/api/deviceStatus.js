@@ -9,6 +9,7 @@ import {
     updateDeviceRuntimeStatus
 } from "../database/devices.js";
 import { findUserByEmail } from "../database/users.js";
+import { findTargetPresence } from "../database/peerStatus.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -190,7 +191,9 @@ export async function deviceStatus(request, env) {
         return Response.json(
             {
                 success: true,
-                runtime_status_available: runtimeStatusAvailable
+                runtime_status_available: runtimeStatusAvailable,
+                peer: await findTargetPresence(env.DB, usuario.id,
+                    String(body.target_device_uuid || "").trim())
             },
             {
                 headers: corsHeaders
