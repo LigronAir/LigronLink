@@ -12,18 +12,19 @@ class PeerStatusTest(unittest.TestCase):
         self.db = sqlite3.connect(':memory:')
         self.db.row_factory = sqlite3.Row
         self.db.executescript('''
-          CREATE TABLE equipos(uuid TEXT,usuario_id INTEGER,alias TEXT,estado TEXT,ultima_conexion TEXT);
+          CREATE TABLE equipos(uuid TEXT,usuario_id INTEGER,alias TEXT,public_ip TEXT,estado TEXT,ultima_conexion TEXT);
           CREATE TABLE device_runtime_status(device_uuid TEXT,usuario_id INTEGER,target_device_uuid TEXT,
-            runtime_state TEXT,streaming INTEGER,ultima_actualizacion TEXT);
+            runtime_state TEXT,streaming INTEGER,target_srt_url TEXT,ultima_actualizacion TEXT);
           CREATE TABLE srt_destinos(equipo_uuid TEXT,usuario_id INTEGER,reservado_por_uuid TEXT,source_id INTEGER);
-          INSERT INTO equipos VALUES('pi',1,'Pi','ONLINE',datetime('now'));
-          INSERT INTO equipos VALUES('native',1,'Native','ONLINE',datetime('now'));
-          INSERT INTO device_runtime_status VALUES('pi',1,'native','ERROR',0,datetime('now'));
+          INSERT INTO equipos VALUES('pi',1,'Pi','198.51.100.20','ONLINE',datetime('now'));
+          INSERT INTO equipos VALUES('native',1,'Native','198.51.100.10','ONLINE',datetime('now'));
+          INSERT INTO device_runtime_status VALUES('pi',1,'native','ERROR',0,'srt://198.51.100.10:11000?mode=rendezvous&port=11000',datetime('now'));
           INSERT INTO srt_destinos VALUES('native',1,'pi',1);
         ''')
     def test_control_remains_present_when_video_fails(self):
         row = self.db.execute(SQL[0], (1, 'native')).fetchone()
         self.assertEqual((row['control_state'],row['runtime_state'],row['source_id']),('PEER_ONLINE','ERROR',1))
+        self.assertEqual(row['peer_public_ip'], '198.51.100.20')
     def test_stale_telemetry_not_connected(self):
         self.db.execute("UPDATE device_runtime_status SET ultima_actualizacion=datetime('now','-80 seconds')")
         self.assertEqual(self.db.execute(SQL[0], (1,'native')).fetchone()['control_state'],'PEER_OFFLINE')
