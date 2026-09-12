@@ -293,12 +293,12 @@ export async function srtReceivers(request, env) {
 
             }
 
-            if (!["listener", "rendezvous"].includes(mode)) {
+            if (mode !== "listener") {
 
                 return Response.json(
                     {
                         success: false,
-                        error: `Modo SRT no compatible para source_id ${sourceId}.`
+                        error: `Modo SRT no compatible para source_id ${sourceId}. Native requiere listener.`
                     },
                     {
                         status: 400,

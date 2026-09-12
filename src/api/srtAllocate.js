@@ -18,19 +18,12 @@ const corsHeaders = {
 // Construir URL SRT para Pi caller.
 // ==========================================================
 
-function buildSrtUrl(host, port, mode) {
+function buildSrtUrl(host, port) {
 
     const normalizedHost =
         String(host).includes(":") && !String(host).startsWith("[")
             ? `[${host}]`
             : host;
-
-    // Rendezvous evita que Pi tenga que entrar desde Internet en un
-    // listener pasivo de Native. Ambos extremos usan el mismo puerto
-    // exterior de la caja reservada y Link sólo intercambia candidatos.
-    if (String(mode).toLowerCase() === "rendezvous") {
-        return `srt://${normalizedHost}:${port}?mode=rendezvous&port=${port}`;
-    }
 
     return `srt://${normalizedHost}:${port}?mode=caller`;
 
@@ -224,8 +217,7 @@ export async function srtAllocate(request, env) {
                     device_uuid: assignment.equipo_uuid,
                     srt_url: buildSrtUrl(
                         assignment.host,
-                        assignment.port,
-                        assignment.mode
+                        assignment.port
                     ),
 
                     // ### FIX
@@ -233,8 +225,7 @@ export async function srtAllocate(request, env) {
                     // utilizarse como selección de operador.
                     source_id: assignment.source_id,
                     receiver_name: assignment.nombre,
-                    port: assignment.port,
-                    transport_mode: assignment.mode
+                    port: assignment.port
                 }
             },
             {

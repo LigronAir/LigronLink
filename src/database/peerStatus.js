@@ -2,8 +2,7 @@
 // La presencia no constituye un acuse de recibo ni acredita recepcion de video.
 export async function findLinkedPiStatuses(db, userId, nativeUuid) {
     const rows = await db.prepare(`
-        SELECT r.device_uuid, p.alias, p.public_ip AS peer_public_ip,
-               r.runtime_state, r.streaming, r.target_srt_url,
+        SELECT r.device_uuid, p.alias, r.runtime_state, r.streaming,
                r.ultima_actualizacion,
                CASE WHEN UPPER(p.estado) = 'ONLINE'
                  AND datetime(p.ultima_conexion) >= datetime('now','-75 seconds')
