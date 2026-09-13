@@ -91,12 +91,11 @@ export async function replaceSrtDestinations(db, device, receivers) {
                     host = excluded.host,
                     port = excluded.port,
                     mode = excluded.mode,
-                    -- Una reserva de Link prevalece sobre FREE sólo si su Pi
-                    -- continúa con presencia reciente. Nunca se eternizan
-                    -- reservas de equipos apagados o de pruebas anteriores.
+                    -- La reserva pertenece a Link, no al proceso FFmpeg.
+                    -- Sobrevive al cambio listener/caller y a sus reintentos
+                    -- mientras la Pi continúe con presencia reciente.
                     estado = CASE
                         WHEN srt_destinos.estado = 'RESERVED'
-                         AND excluded.estado = 'FREE'
                          AND EXISTS (
                             SELECT 1
                             FROM equipos AS pi
@@ -110,7 +109,6 @@ export async function replaceSrtDestinations(db, device, receivers) {
                     END,
                     reservado_por_uuid = CASE
                         WHEN srt_destinos.estado = 'RESERVED'
-                         AND excluded.estado = 'FREE'
                          AND EXISTS (
                             SELECT 1
                             FROM equipos AS pi
