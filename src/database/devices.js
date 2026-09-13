@@ -397,24 +397,60 @@ export async function findDevicesByUser(db, usuarioId) {
 // ==========================================================
 
 export async function deleteDevice(db, deviceId, usuarioId) {
-
-    const resultado = await db
+    const device = await db
         .prepare(
             `
-            DELETE FROM equipos
+            SELECT uuid FROM equipos
             WHERE id = ?1
               AND usuario_id = ?2
             `
         )
         .bind(deviceId, usuarioId)
-        .run();
+        .first();
 
-    if (!resultado.meta || resultado.meta.changes === 0) {
+    if (!device?.uuid) {
 
         throw new Error(
             "No se pudo eliminar el equipo."
         );
 
+    }
+
+    // Los receptores y el estado operativo referencian el equipo. D1 aplica
+    // las claves foráneas, por lo que deben retirarse antes que el padre.
+    // También se liberan reservas hechas por una Pi que se elimina.
+    try {
+        await db.prepare(
+            `DELETE FROM device_runtime_status
+             WHERE device_uuid = ?1 OR target_device_uuid = ?1`
+        ).bind(device.uuid).run();
+    }
+    catch (error) {
+        if (!String(error?.message || error).includes("no such table")) {
+            throw error;
+        }
+    }
+
+    const resultados = await db.batch([
+        db.prepare(
+            `UPDATE srt_destinos
+             SET reservado_por_uuid = NULL,
+                 estado = CASE WHEN estado = 'RESERVED' THEN 'FREE' ELSE estado END
+             WHERE reservado_por_uuid = ?1`
+        ).bind(device.uuid),
+        db.prepare(
+            `DELETE FROM srt_destinos
+             WHERE equipo_uuid = ?1 AND usuario_id = ?2`
+        ).bind(device.uuid, usuarioId),
+        db.prepare(
+            `DELETE FROM equipos
+             WHERE id = ?1 AND usuario_id = ?2`
+        ).bind(deviceId, usuarioId)
+    ]);
+
+    const resultado = resultados.at(-1);
+    if (!resultado?.meta || resultado.meta.changes === 0) {
+        throw new Error("No se pudo eliminar el equipo.");
     }
 
     return true;
