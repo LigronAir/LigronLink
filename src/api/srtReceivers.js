@@ -235,14 +235,10 @@ export async function srtReceivers(request, env) {
             const hostRecibido =
                 receiver.host?.trim() || "";
 
-            // --------------------------------------------------
-            // ### FIX
-            // Si Native no proporciona host, utilizamos la IP
-            // pública registrada para el equipo.
-            // --------------------------------------------------
-
-            const host =
-                hostRecibido || device.public_ip || "";
+            // Native es la única autoridad del endpoint audiovisual.
+            // No combinar la IP observada de una petición HTTP (que puede
+            // salir por VPN) con un puerto abierto en otra interfaz/router.
+            const host = hostRecibido;
 
             const port = Number(receiver.port);
 
@@ -332,7 +328,7 @@ export async function srtReceivers(request, env) {
                 return Response.json(
                     {
                         success: false,
-                        error: `No se pudo determinar el host para source_id ${sourceId}.`
+                        error: `Native no publicó la dirección SRT exterior para source_id ${sourceId}.`
                     },
                     {
                         status: 400,
@@ -340,6 +336,25 @@ export async function srtReceivers(request, env) {
                     }
                 );
 
+            }
+
+            const ipv4Parts = host.split(".");
+            const validIpv4 =
+                ipv4Parts.length === 4 &&
+                ipv4Parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255);
+            const validIpv6 = host.includes(":") && /^[0-9a-f:]+$/i.test(host);
+
+            if (!validIpv4 && !validIpv6) {
+                return Response.json(
+                    {
+                        success: false,
+                        error: `Dirección SRT exterior inválida para source_id ${sourceId}.`
+                    },
+                    {
+                        status: 400,
+                        headers: corsHeaders
+                    }
+                );
             }
 
             if (!Number.isInteger(port) || port < 1 || port > 65535) {
@@ -398,7 +413,7 @@ export async function srtReceivers(request, env) {
                 success: true,
                 device_uuid: device.uuid,
                 device_alias: device.alias,
-                host_default: device.public_ip || null,
+                host_default: normalizados[0]?.host || null,
                 receivers: guardados,
                 count: guardados.length,
                 linked_pis: await findLinkedPiStatuses(env.DB, usuario.id, device.uuid)

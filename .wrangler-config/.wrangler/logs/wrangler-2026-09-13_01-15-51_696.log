@@ -1,0 +1,78 @@
+
+--- 2026-09-13T01:15:51.844Z debug
+🪵  Writing logs to "C:\Ligrecto_Windows\LigronLink\LigronLink\.wrangler-config\.wrangler\logs\wrangler-2026-09-13_01-15-51_696.log"
+---
+
+--- 2026-09-13T01:15:51.843Z debug
+.env file not found at "C:\Ligrecto_Windows\LigronLink\LigronLink\.env". Continuing... For more details, refer to https://developers.cloudflare.com/workers/wrangler/system-environment-variables/
+---
+
+--- 2026-09-13T01:15:51.848Z debug
+.env file not found at "C:\Ligrecto_Windows\LigronLink\LigronLink\.env.local". Continuing... For more details, refer to https://developers.cloudflare.com/workers/wrangler/system-environment-variables/
+---
+
+--- 2026-09-13T01:15:51.855Z log
+
+ ⛅️ wrangler 4.131.1
+────────────────────
+---
+
+--- 2026-09-13T01:15:51.883Z debug
+Running autoconfig detection in C:\Ligrecto_Windows\LigronLink\LigronLink...
+---
+
+--- 2026-09-13T01:15:51.918Z log
+
+Cloudflare collects anonymous telemetry about your usage of Wrangler. Learn more at https://github.com/cloudflare/workers-sdk/tree/main/packages/wrangler/telemetry.md
+---
+
+--- 2026-09-13T01:15:51.919Z log
+
+---
+
+--- 2026-09-13T01:15:51.976Z error
+X [ERROR] In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN environment variable for wrangler to work. Please go to https://developers.cloudflare.com/fundamentals/api/get-started/create-token/ for instructions on how to create an api token, and assign its value to CLOUDFLARE_API_TOKEN.
+
+  
+  To continue without logging in, rerun this command with `--temporary`. Wrangler will use a temporary account and print a claim URL.
+
+
+---
+
+--- 2026-09-13T01:15:51.991Z debug
+Error: In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN environment variable for wrangler to work. Please go to https://developers.cloudflare.com/fundamentals/api/get-started/create-token/ for instructions on how to create an api token, and assign its value to CLOUDFLARE_API_TOKEN.
+
+To continue without logging in, rerun this command with `--temporary`. Wrangler will use a temporary account and print a claim URL.
+    at Object.requireAuth (C:\Ligrecto_Windows\LigronLink\LigronLink\.npm-cache\_npx\32026684e21afda6\node_modules\wrangler\wrangler-dist\cli.js:127739:15)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async mergeSharedConfigArgs (C:\Ligrecto_Windows\LigronLink\LigronLink\.npm-cache\_npx\32026684e21afda6\node_modules\wrangler\wrangler-dist\cli.js:207305:39)
+    at async mergeDeployConfigArgs (C:\Ligrecto_Windows\LigronLink\LigronLink\.npm-cache\_npx\32026684e21afda6\node_modules\wrangler\wrangler-dist\cli.js:207355:34)
+    at async runDeployCommandHandler (C:\Ligrecto_Windows\LigronLink\LigronLink\.npm-cache\_npx\32026684e21afda6\node_modules\wrangler\wrangler-dist\cli.js:283181:33)
+    at async Object.handler (C:\Ligrecto_Windows\LigronLink\LigronLink\.npm-cache\_npx\32026684e21afda6\node_modules\wrangler\wrangler-dist\cli.js:283328:9)
+    at async C:\Ligrecto_Windows\LigronLink\LigronLink\.npm-cache\_npx\32026684e21afda6\node_modules\wrangler\wrangler-dist\cli.js:223831:26
+    at async Object.handler (C:\Ligrecto_Windows\LigronLink\LigronLink\.npm-cache\_npx\32026684e21afda6\node_modules\wrangler\wrangler-dist\cli.js:223768:7)
+---
+
+--- 2026-09-13T01:15:52.499Z debug
+Metrics dispatcher: Posting data {"deviceId":"1ca23d00-a962-4eef-bcd8-d6bd6d6b1ed8","event":"wrangler command started","timestamp":1789262152499,"properties":{"amplitude_session_id":1789262151860,"amplitude_event_id":0,"wranglerVersion":"4.131.1","wranglerMajorVersion":4,"wranglerMinorVersion":131,"wranglerPatchVersion":1,"osPlatform":"Windows","osVersion":"Windows 11 Home","nodeVersion":24,"packageManager":"npm","isFirstUsage":true,"configFileType":"jsonc","isCI":false,"isPagesCI":false,"isWorkersCI":false,"isInteractive":false,"hasAssets":false,"agent":"codex","argsUsed":[],"argsCombination":"","sanitizedCommand":"deploy","sanitizedArgs":{},"currentAgentSkillsInstalled":"manual"}}
+---
+
+--- 2026-09-13T01:15:52.501Z debug
+Metrics dispatcher: Posting data {"deviceId":"1ca23d00-a962-4eef-bcd8-d6bd6d6b1ed8","event":"autoconfig_process_started","timestamp":1789262152501,"properties":{"amplitude_session_id":1789262151883,"amplitude_event_id":0,"wranglerVersion":"4.131.1","wranglerMajorVersion":4,"wranglerMinorVersion":131,"wranglerPatchVersion":1,"osPlatform":"Windows","osVersion":"Windows 11 Home","nodeVersion":24,"packageManager":"npm","isFirstUsage":false,"configFileType":"none","isCI":false,"isPagesCI":false,"isWorkersCI":false,"isInteractive":false,"hasAssets":false,"agent":"codex","category":"Workers","os":"win32:x64","autoConfigId":"b4daa9c8-1797-4997-9241-20177f631470","command":"wrangler deploy","dryRun":false,"currentAgentSkillsInstalled":"manual"}}
+---
+
+--- 2026-09-13T01:15:52.501Z debug
+Metrics dispatcher: Posting data {"deviceId":"1ca23d00-a962-4eef-bcd8-d6bd6d6b1ed8","event":"autoconfig_detection_started","timestamp":1789262152501,"properties":{"amplitude_session_id":1789262151883,"amplitude_event_id":0,"wranglerVersion":"4.131.1","wranglerMajorVersion":4,"wranglerMinorVersion":131,"wranglerPatchVersion":1,"osPlatform":"Windows","osVersion":"Windows 11 Home","nodeVersion":24,"packageManager":"npm","isFirstUsage":false,"configFileType":"none","isCI":false,"isPagesCI":false,"isWorkersCI":false,"isInteractive":false,"hasAssets":false,"agent":"codex","category":"Workers","os":"win32:x64","autoConfigId":"b4daa9c8-1797-4997-9241-20177f631470","command":"wrangler deploy","currentAgentSkillsInstalled":"manual"}}
+---
+
+--- 2026-09-13T01:15:52.502Z debug
+Metrics dispatcher: Posting data {"deviceId":"1ca23d00-a962-4eef-bcd8-d6bd6d6b1ed8","event":"autoconfig_detection_completed","timestamp":1789262152502,"properties":{"amplitude_session_id":1789262151884,"amplitude_event_id":0,"wranglerVersion":"4.131.1","wranglerMajorVersion":4,"wranglerMinorVersion":131,"wranglerPatchVersion":1,"osPlatform":"Windows","osVersion":"Windows 11 Home","nodeVersion":24,"packageManager":"npm","isFirstUsage":false,"configFileType":"none","isCI":false,"isPagesCI":false,"isWorkersCI":false,"isInteractive":false,"hasAssets":false,"agent":"codex","category":"Workers","os":"win32:x64","autoConfigId":"b4daa9c8-1797-4997-9241-20177f631470","configured":true,"success":true,"currentAgentSkillsInstalled":"manual"}}
+---
+
+--- 2026-09-13T01:15:52.502Z debug
+Metrics dispatcher: Posting data {"deviceId":"1ca23d00-a962-4eef-bcd8-d6bd6d6b1ed8","event":"autoconfig_process_ended","timestamp":1789262152502,"properties":{"amplitude_session_id":1789262151884,"amplitude_event_id":0,"wranglerVersion":"4.131.1","wranglerMajorVersion":4,"wranglerMinorVersion":131,"wranglerPatchVersion":1,"osPlatform":"Windows","osVersion":"Windows 11 Home","nodeVersion":24,"packageManager":"npm","isFirstUsage":false,"configFileType":"none","isCI":false,"isPagesCI":false,"isWorkersCI":false,"isInteractive":false,"hasAssets":false,"agent":"codex","category":"Workers","os":"win32:x64","autoConfigId":"b4daa9c8-1797-4997-9241-20177f631470","command":"wrangler deploy","dryRun":false,"success":true,"currentAgentSkillsInstalled":"manual"}}
+---
+
+--- 2026-09-13T01:15:52.503Z debug
+Metrics dispatcher: Posting data {"deviceId":"1ca23d00-a962-4eef-bcd8-d6bd6d6b1ed8","event":"wrangler command errored","timestamp":1789262152503,"properties":{"amplitude_session_id":1789262151860,"amplitude_event_id":1,"wranglerVersion":"4.131.1","wranglerMajorVersion":4,"wranglerMinorVersion":131,"wranglerPatchVersion":1,"osPlatform":"Windows","osVersion":"Windows 11 Home","nodeVersion":24,"packageManager":"npm","isFirstUsage":false,"configFileType":"jsonc","isCI":false,"isPagesCI":false,"isWorkersCI":false,"isInteractive":false,"hasAssets":false,"agent":"codex","argsUsed":[],"argsCombination":"","sanitizedCommand":"deploy","sanitizedArgs":{},"durationMs":68,"errorType":"UserError","errorMessage":"user auth missing api token non interactive","currentAgentSkillsInstalled":"manual"}}
+---
