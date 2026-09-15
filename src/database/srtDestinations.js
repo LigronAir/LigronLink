@@ -28,6 +28,7 @@ export async function replaceSrtDestinations(db, device, receivers) {
                 -- vuelve a quedar disponible al siguiente heartbeat.
                 estado = CASE
                     WHEN estado = 'RESERVED'
+                     AND ?3 != 'OFFLINE'
                      AND EXISTS (
                         SELECT 1
                         FROM equipos AS pi
@@ -45,7 +46,8 @@ export async function replaceSrtDestinations(db, device, receivers) {
         )
         .bind(
             device.uuid,
-            device.usuarioId
+            device.usuarioId,
+            receivers.some((receiver) => receiver.estado !== 'OFFLINE') ? 'FREE' : 'OFFLINE'
         )
         .run();
 
@@ -96,6 +98,7 @@ export async function replaceSrtDestinations(db, device, receivers) {
                     -- mientras la Pi continúe con presencia reciente.
                     estado = CASE
                         WHEN srt_destinos.estado = 'RESERVED'
+                         AND excluded.estado != 'OFFLINE'
                          AND EXISTS (
                             SELECT 1
                             FROM equipos AS pi
@@ -109,6 +112,7 @@ export async function replaceSrtDestinations(db, device, receivers) {
                     END,
                     reservado_por_uuid = CASE
                         WHEN srt_destinos.estado = 'RESERVED'
+                         AND excluded.estado != 'OFFLINE'
                          AND EXISTS (
                             SELECT 1
                             FROM equipos AS pi
