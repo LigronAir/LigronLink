@@ -21,6 +21,7 @@ const VALID_STATES = [
     "OFFLINE",
     "MONITOR",
     "CONNECTING",
+    "RECONNECTING",
     "EMITTING",
     "ERROR"
 ];
