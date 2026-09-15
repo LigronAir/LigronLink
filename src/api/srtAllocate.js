@@ -29,6 +29,15 @@ function buildSrtUrl(host, port) {
 
 }
 
+// ### FIX — SRT RENDEZVOUS
+async function createRendezvousSession(db, usuarioId, pi, native, assignment) {
+    const sessionId = `rv_${crypto.randomUUID()}`;
+    const sessionPort = 13000 + Number(assignment.source_id) - 1;
+    await db.prepare(`INSERT INTO rendezvous_sessions (session_id, usuario_id, source_device_uuid, destination_device_uuid, box_id, session_port, route, pi_public_ip, native_public_ip, state, expires_at) VALUES (?1,?2,?3,?4,?5,?6,'RENDEZVOUS',?7,?8,'CREATED',datetime('now','+45 seconds'))`)
+        .bind(sessionId, usuarioId, pi.uuid, native.uuid, assignment.source_id, sessionPort, pi.public_ip || null, native.public_ip || null).run();
+    return { session_id: sessionId, session_port: sessionPort, route: "RENDEZVOUS", peer_host: native.public_ip || assignment.host };
+}
+
 // ==========================================================
 // POST /api/v1/srt/allocate
 // ==========================================================
@@ -210,15 +219,21 @@ export async function srtAllocate(request, env) {
 
         }
 
+        const rendezvous = String(assignment.mode || "listener").toLowerCase() === "rendezvous"
+            ? await createRendezvousSession(env.DB, usuario.id, pi, device, assignment)
+            : null;
+
         return Response.json(
             {
                 success: true,
                 assignment: {
                     device_uuid: assignment.equipo_uuid,
-                    srt_url: buildSrtUrl(
+                    srt_url: rendezvous ? "" : buildSrtUrl(
                         assignment.host,
                         assignment.port
                     ),
+                    route: rendezvous ? "RENDEZVOUS" : "DIRECT",
+                    rendezvous,
 
                     // ### FIX
                     // Campos técnicos para diagnóstico/log; no deben

@@ -18,6 +18,8 @@ import { srtReceivers } from "./api/srtReceivers.js";
 import { srtDestinations } from "./api/srtDestinations.js";
 import { srtAllocate } from "./api/srtAllocate.js";
 import { srtRelease } from "./api/srtRelease.js";
+// ### FIX — SRT RENDEZVOUS
+import { rendezvousPoll, rendezvousReady, rendezvousResult } from "./api/rendezvous.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -199,6 +201,19 @@ export default {
 
             return await srtRelease(request, env);
 
+        }
+
+        // ==================================================
+        // ### FIX — SRT RENDEZVOUS
+        // ==================================================
+        if (request.method === "GET" && url.pathname === "/api/v1/rendezvous") {
+            return await rendezvousPoll(request, env);
+        }
+        if (request.method === "POST" && url.pathname === "/api/v1/rendezvous/ready") {
+            return await rendezvousReady(request, env);
+        }
+        if (request.method === "POST" && url.pathname === "/api/v1/rendezvous/result") {
+            return await rendezvousResult(request, env);
         }
 
         // ==================================================
