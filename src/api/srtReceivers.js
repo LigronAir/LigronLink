@@ -8,7 +8,10 @@ import {
     findDeviceByUuid,
     touchDevicePresence
 } from "../database/devices.js";
-import { replaceSrtDestinations } from "../database/srtDestinations.js";
+import {
+    hasSameSrtReceiverSnapshot,
+    replaceSrtDestinations
+} from "../database/srtDestinations.js";
 import { findLinkedPiStatuses } from "../database/peerStatus.js";
 
 const corsHeaders = {
@@ -388,15 +391,27 @@ export async function srtReceivers(request, env) {
         // Publicar receptores y refrescar presencia del equipo.
         // --------------------------------------------------
 
-        const guardados =
-            await replaceSrtDestinations(
-                env.DB,
-                {
-                    uuid: device.uuid,
-                    usuarioId: usuario.id
-                },
-                normalizados
-            );
+        const snapshotDevice = {
+            uuid: device.uuid,
+            usuarioId: usuario.id
+        };
+
+        const unchanged = await hasSameSrtReceiverSnapshot(
+            env.DB,
+            snapshotDevice,
+            normalizados
+        );
+
+        const guardados = unchanged
+            ? normalizados.map((receiver) => ({
+                source_id: receiver.sourceId,
+                name: receiver.nombre,
+                host: receiver.host,
+                port: receiver.port,
+                mode: receiver.mode,
+                state: receiver.estado
+            }))
+            : await replaceSrtDestinations(env.DB, snapshotDevice, normalizados);
 
         await touchDevicePresence(
             env.DB,
@@ -416,6 +431,7 @@ export async function srtReceivers(request, env) {
                 host_default: normalizados[0]?.host || null,
                 receivers: guardados,
                 count: guardados.length,
+                snapshot_changed: !unchanged,
                 linked_pis: await findLinkedPiStatuses(env.DB, usuario.id, device.uuid)
             },
             {

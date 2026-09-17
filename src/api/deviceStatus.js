@@ -193,8 +193,12 @@ export async function deviceStatus(request, env) {
             {
                 success: true,
                 runtime_status_available: runtimeStatusAvailable,
-                peer: await findTargetPresence(env.DB, usuario.id,
-                    String(body.target_device_uuid || "").trim())
+                peer: await findTargetPresence(
+                    env.DB,
+                    usuario.id,
+                    String(body.target_device_uuid || "").trim(),
+                    device.uuid
+                )
             },
             {
                 headers: corsHeaders

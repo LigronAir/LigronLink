@@ -155,6 +155,43 @@ export async function replaceSrtDestinations(db, device, receivers) {
 }
 
 // ==========================================================
+// Comparar la fotografía que Native quiere publicar con la ya
+// almacenada. Un heartbeat no debe reescribir cincuenta filas
+// si los listeners siguen exactamente igual.
+// ==========================================================
+
+export async function hasSameSrtReceiverSnapshot(db, device, receivers) {
+
+    const current = await db.prepare(`
+        SELECT source_id, nombre, host, port, mode, estado
+        FROM srt_destinos
+        WHERE equipo_uuid = ?1 AND usuario_id = ?2
+        ORDER BY source_id
+    `).bind(device.uuid, device.usuarioId).all();
+
+    const rows = current.results || [];
+    if (rows.length !== receivers.length) return false;
+
+    const bySourceId = new Map(rows.map((row) => [Number(row.source_id), row]));
+    return receivers.every((receiver) => {
+        const row = bySourceId.get(Number(receiver.sourceId));
+        if (!row) return false;
+        const persistedState = String(row.estado || "").toUpperCase();
+        const requestedState = String(receiver.estado || "").toUpperCase();
+        // RESERVED es una decisión de Link. Native sigue publicando FREE
+        // mientras su listener está preparado y no debe borrar la reserva.
+        const compatibleState = persistedState === requestedState
+            || (persistedState === "RESERVED" && requestedState === "FREE");
+        return String(row.nombre) === String(receiver.nombre)
+            && String(row.host) === String(receiver.host)
+            && Number(row.port) === Number(receiver.port)
+            && String(row.mode) === String(receiver.mode)
+            && compatibleState;
+    });
+
+}
+
+// ==========================================================
 // ### FIX
 // Resumen de receptores SRT por equipo para el dashboard web.
 // ==========================================================
