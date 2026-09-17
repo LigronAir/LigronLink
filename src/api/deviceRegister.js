@@ -53,6 +53,10 @@ export async function deviceRegister(request, env) {
         const uuid = body.uuid?.trim() || "";
 
         const email = body.email?.trim().toLowerCase() || "";
+        // ### FIX — IPv6 / DUAL STACK
+        // Opcional: los clientes antiguos siguen registrándose sin este campo.
+        const networkCapabilities = body.network_capabilities && typeof body.network_capabilities === "object"
+            ? body.network_capabilities : null;
 
         // ==================================================
         // ### FIX
@@ -169,6 +173,18 @@ export async function deviceRegister(request, env) {
                 estado: esNative ? "ONLINE" : "OFFLINE"
             }
         );
+
+        // Sólo se escribe al registrar o al cambiar red, nunca por polling.
+        // La tabla es opcional durante el despliegue escalonado para no romper
+        // instalaciones que aún no hayan aplicado la migración.
+        if (networkCapabilities) {
+            try {
+                await env.DB.prepare(`INSERT INTO device_network_capabilities (device_uuid, capabilities_json, updated_at) VALUES (?1, ?2, datetime('now')) ON CONFLICT(device_uuid) DO UPDATE SET capabilities_json=excluded.capabilities_json, updated_at=datetime('now') WHERE capabilities_json != excluded.capabilities_json`)
+                    .bind(uuid, JSON.stringify(networkCapabilities)).run();
+            } catch (capabilityError) {
+                console.warn("IPv6 capabilities not persisted:", capabilityError.message);
+            }
+        }
 
         // --------------------------------------------------
         // OK
