@@ -193,6 +193,26 @@ export async function srtAllocate(request, env) {
 
         }
 
+        // Rendezvous necesita dos extremos de red distintos. Cuando Link
+        // observa la misma IPv4 pública para Pi y Native, la ruta actual
+        // estaría mandando a ambos a esa misma dirección y al mismo puerto:
+        // no es NAT traversal, es una tentativa de hairpin/autoconexión.
+        // No reservamos una caja para una sesión que no puede ser válida.
+        const nativeRendezvous = String(device.public_ip || "").trim();
+        const piRendezvous = String(pi.public_ip || "").trim();
+        if (nativeRendezvous && piRendezvous && nativeRendezvous === piRendezvous) {
+            return Response.json(
+                {
+                    success: false,
+                    error: "Rendezvous no disponible: Pi y Native comparten la misma IP pública observada. Use la dirección LAN directa si están en la misma red, o una ruta pública/IPv6 distinta."
+                },
+                {
+                    status: 409,
+                    headers: corsHeaders
+                }
+            );
+        }
+
         // ### FIX
         // Asignación atómica: un único UPDATE selecciona y reserva.
         const assignment =
