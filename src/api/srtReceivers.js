@@ -454,12 +454,17 @@ export async function srtReceivers(request, env) {
                 // Carry the control-plane request in the same authenticated
                 // response instead of making Pi wait for a second poll path.
                 connection_requests: (await env.DB.prepare(`
-                    SELECT request_id, source_id, host, port, state
-                    FROM connection_requests
-                    WHERE usuario_id=?1 AND native_device_uuid=?2
-                      AND datetime(expires_at)>datetime('now')
-                      AND state IN ('PENDING','PI_READY','BOX_READY','CALLER_REQUIRED')
-                    ORDER BY created_at ASC
+                    SELECT request.request_id, request.source_id, request.host, request.port, request.state
+                    FROM connection_requests AS request
+                    JOIN equipos AS pi
+                      ON pi.uuid=request.pi_device_uuid
+                     AND pi.usuario_id=request.usuario_id
+                    WHERE request.usuario_id=?1 AND request.native_device_uuid=?2
+                      AND datetime(request.expires_at)>datetime('now')
+                      AND UPPER(pi.estado)='ONLINE'
+                      AND datetime(pi.ultima_conexion)>=datetime('now','-45 seconds')
+                      AND request.state IN ('PENDING','PI_READY','BOX_READY','CALLER_REQUIRED')
+                    ORDER BY request.created_at ASC
                 `).bind(usuario.id, device.uuid).all()).results || []
             },
             {

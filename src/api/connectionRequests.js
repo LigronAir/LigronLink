@@ -137,7 +137,10 @@ export async function connectionReady(request, env) {
         const body = await request.json();
         const { account, deviceUuid } = await identity(request, env, body);
         const requestId = String(body.request_id || "").trim();
-        const row = await env.DB.prepare(`UPDATE connection_requests SET state=CASE WHEN source_id IS NULL THEN 'PI_READY' ELSE 'CALLER_REQUIRED' END, updated_at=datetime('now') WHERE request_id=?1 AND usuario_id=?2 AND pi_device_uuid=?3 AND state IN ('PENDING','BOX_READY') AND datetime(expires_at)>datetime('now') RETURNING request_id, source_id, host, port, state`)
+        // PI_READY turns the short negotiation lease into an active stream
+        // lease.  It is subsequently governed by Pi presence/cancel, not an
+        // arbitrary 90-second timeout in the middle of live video.
+        const row = await env.DB.prepare(`UPDATE connection_requests SET state=CASE WHEN source_id IS NULL THEN 'PI_READY' ELSE 'CALLER_REQUIRED' END, expires_at=datetime('now','+12 hours'), updated_at=datetime('now') WHERE request_id=?1 AND usuario_id=?2 AND pi_device_uuid=?3 AND state IN ('PENDING','BOX_READY') AND datetime(expires_at)>datetime('now') RETURNING request_id, source_id, host, port, state`)
             .bind(requestId, account.id, deviceUuid).first();
         if (!row) throw new Error("La solicitud no está disponible para iniciar la llamada.");
         return Response.json({ success: true, request: row }, { headers });
