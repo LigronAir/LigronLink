@@ -432,7 +432,18 @@ export async function srtReceivers(request, env) {
                 receivers: guardados,
                 count: guardados.length,
                 snapshot_changed: !unchanged,
-                linked_pis: await findLinkedPiStatuses(env.DB, usuario.id, device.uuid)
+                linked_pis: await findLinkedPiStatuses(env.DB, usuario.id, device.uuid),
+                // Native receives this response reliably on every snapshot.
+                // Carry the control-plane request in the same authenticated
+                // response instead of making Pi wait for a second poll path.
+                connection_requests: (await env.DB.prepare(`
+                    SELECT request_id, source_id, host, port, state
+                    FROM connection_requests
+                    WHERE usuario_id=?1 AND native_device_uuid=?2
+                      AND datetime(expires_at)>datetime('now')
+                      AND state IN ('PENDING','PI_READY','BOX_READY','CALLER_REQUIRED')
+                    ORDER BY created_at ASC
+                `).bind(usuario.id, device.uuid).all()).results || []
             },
             {
                 headers: corsHeaders
