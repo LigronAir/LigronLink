@@ -30,12 +30,32 @@ function buildSrtUrl(host, port) {
 }
 
 // ### FIX — SRT RENDEZVOUS
-async function createRendezvousSession(db, usuarioId, pi, native, assignment) {
+async function createRendezvousSession(db, usuarioId, pi, native, assignment, piEndpoint, nativeEndpoint, addressFamily) {
     const sessionId = `rv_${crypto.randomUUID()}`;
     const sessionPort = 13000 + Number(assignment.source_id) - 1;
     await db.prepare(`INSERT INTO rendezvous_sessions (session_id, usuario_id, source_device_uuid, destination_device_uuid, box_id, session_port, route, pi_public_ip, native_public_ip, state, expires_at) VALUES (?1,?2,?3,?4,?5,?6,'RENDEZVOUS',?7,?8,'CREATED',datetime('now','+45 seconds'))`)
-        .bind(sessionId, usuarioId, pi.uuid, native.uuid, assignment.source_id, sessionPort, pi.public_ip || null, native.public_ip || null).run();
-    return { session_id: sessionId, session_port: sessionPort, route: "RENDEZVOUS", peer_host: native.public_ip || assignment.host };
+        .bind(sessionId, usuarioId, pi.uuid, native.uuid, assignment.source_id, sessionPort, piEndpoint || null, nativeEndpoint || null).run();
+    return { session_id: sessionId, session_port: sessionPort, route: "RENDEZVOUS", address_family: addressFamily, peer_host: nativeEndpoint || assignment.host };
+}
+
+// ### FIX — IPv6 RENDEZVOUS
+// Las capacidades son datos declarados por el cliente, no sustituyen la
+// validación SRT. Sólo se usan cuando ambos extremos han confirmado ruta IPv6.
+async function usableIpv6Endpoint(db, deviceUuid) {
+    try {
+        const row = await db.prepare(`SELECT capabilities_json FROM device_network_capabilities WHERE device_uuid=?1`)
+            .bind(deviceUuid).first();
+        const capabilities = JSON.parse(row?.capabilities_json || "{}");
+        const address = String(capabilities.ipv6_address || "").trim();
+        const hasRoute = capabilities.srt_ipv6 === true && capabilities.ipv6_internet === true;
+        const invalid = /^(::1|fe80:|fc|fd)/i.test(address);
+        return hasRoute && /^[0-9a-f:]+$/i.test(address) && address.includes(":") && !invalid
+            ? address : "";
+    } catch (error) {
+        // La migración de capabilities puede no estar aplicada todavía.
+        console.warn("IPv6 capabilities unavailable:", error.message);
+        return "";
+    }
 }
 
 // ==========================================================
@@ -193,18 +213,27 @@ export async function srtAllocate(request, env) {
 
         }
 
-        // Rendezvous necesita dos extremos de red distintos. Cuando Link
+        // ### FIX — IPv6 RENDEZVOUS
+        // IPv6 global se intenta primero: no depende del NAT IPv4 compartido.
+        // Si falta en cualquiera de los dos extremos, se conserva el flujo IPv4.
+        const [piIpv6, nativeIpv6] = await Promise.all([
+            usableIpv6Endpoint(env.DB, pi.uuid),
+            usableIpv6Endpoint(env.DB, device.uuid)
+        ]);
+        const useIpv6 = Boolean(piIpv6 && nativeIpv6);
+        const piEndpoint = useIpv6 ? piIpv6 : String(pi.public_ip || "").trim();
+        const nativeEndpoint = useIpv6 ? nativeIpv6 : String(device.public_ip || "").trim();
+
+        // Rendezvous IPv4 necesita dos extremos de red distintos. Cuando Link
         // observa la misma IPv4 pública para Pi y Native, la ruta actual
         // estaría mandando a ambos a esa misma dirección y al mismo puerto:
         // no es NAT traversal, es una tentativa de hairpin/autoconexión.
         // No reservamos una caja para una sesión que no puede ser válida.
-        const nativeRendezvous = String(device.public_ip || "").trim();
-        const piRendezvous = String(pi.public_ip || "").trim();
-        if (nativeRendezvous && piRendezvous && nativeRendezvous === piRendezvous) {
+        if (!useIpv6 && nativeEndpoint && piEndpoint && nativeEndpoint === piEndpoint) {
             return Response.json(
                 {
                     success: false,
-                    error: "Rendezvous no disponible: Pi y Native comparten la misma IP pública observada. Use la dirección LAN directa si están en la misma red, o una ruta pública/IPv6 distinta."
+                    error: "Rendezvous no disponible: Pi y Native comparten la misma IP pública observada y no hay IPv6 global verificable en ambos extremos. Use LAN directa o active IPv6."
                 },
                 {
                     status: 409,
@@ -240,7 +269,7 @@ export async function srtAllocate(request, env) {
         }
 
         const rendezvous = String(assignment.mode || "listener").toLowerCase() === "rendezvous"
-            ? await createRendezvousSession(env.DB, usuario.id, pi, device, assignment)
+            ? await createRendezvousSession(env.DB, usuario.id, pi, device, assignment, piEndpoint, nativeEndpoint, useIpv6 ? "IPv6" : "IPv4")
             : null;
 
         return Response.json(
