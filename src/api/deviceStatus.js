@@ -5,6 +5,7 @@
 
 import {
     findDeviceByUuid,
+    setDeviceStatus,
     touchDevicePresence,
     updateDeviceRuntimeStatus
 } from "../database/devices.js";
@@ -146,14 +147,14 @@ export async function deviceStatus(request, env) {
 
         }
 
-        // La presencia básica no depende de la tabla de telemetría.
-        // Así Pi sigue visible y renovando su heartbeat incluso si una D1
-        // antigua todavía no ha aplicado la migración opcional de runtime.
-        await touchDevicePresence(
-            env.DB,
-            device.uuid,
-            usuario.id
-        );
+        // OFFLINE is an explicit shutdown signal, not a heartbeat.  The
+        // previous implementation touched presence even for OFFLINE, which
+        // made a closed Pi appear alive for a new reservation.
+        if (runtimeState === "OFFLINE") {
+            await setDeviceStatus(env.DB, device.uuid, "OFFLINE");
+        } else {
+            await touchDevicePresence(env.DB, device.uuid, usuario.id);
+        }
 
         let runtimeStatusAvailable = true;
 

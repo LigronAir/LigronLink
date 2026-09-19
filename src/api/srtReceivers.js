@@ -419,6 +419,23 @@ export async function srtReceivers(request, env) {
             usuario.id
         );
 
+        // A reservation is a live control-plane lease, not historical UI
+        // data.  When its Pi has stopped heartbeating, free the box on the
+        // next Native snapshot so it cannot remain a phantom reservation.
+        await env.DB.prepare(`
+            UPDATE srt_destinos
+            SET estado='FREE', reservado_por_uuid=NULL,
+                ultima_actualizacion=datetime('now')
+            WHERE equipo_uuid=?1 AND usuario_id=?2 AND estado='RESERVED'
+              AND NOT EXISTS (
+                  SELECT 1 FROM equipos AS pi
+                  WHERE pi.uuid=srt_destinos.reservado_por_uuid
+                    AND pi.usuario_id=srt_destinos.usuario_id
+                    AND UPPER(pi.estado)='ONLINE'
+                    AND datetime(pi.ultima_conexion)>=datetime('now','-45 seconds')
+              )
+        `).bind(device.uuid, usuario.id).run();
+
         // --------------------------------------------------
         // OK
         // --------------------------------------------------

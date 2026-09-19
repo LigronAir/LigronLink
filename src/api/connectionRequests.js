@@ -67,6 +67,13 @@ export async function connectionRequest(request, env) {
         if (!native || Number(native.usuario_id) !== Number(account.id) || !String(native.tipo || "").toLowerCase().includes("ligronair")) throw new Error("Destino Native no disponible.");
         const requestId = `conn_${crypto.randomUUID()}`;
         const route = await reverseCallerRoute(env, pi, native, requestId);
+        // A Pi may have been stopped, restarted, or changed destination.
+        // Its old control request must never keep a Native box apparently
+        // reserved when there is no active caller attempt.
+        await env.DB.prepare(`UPDATE connection_requests SET state='CANCELLED', updated_at=datetime('now') WHERE usuario_id=?1 AND pi_device_uuid=?2 AND native_device_uuid=?3 AND state IN ('PENDING','PI_READY','BOX_READY','CALLER_REQUIRED')`)
+            .bind(account.id, deviceUuid, nativeUuid).run();
+        await env.DB.prepare(`UPDATE srt_destinos SET estado='FREE', reservado_por_uuid=NULL, ultima_actualizacion=datetime('now') WHERE usuario_id=?1 AND equipo_uuid=?2 AND reservado_por_uuid=?3 AND estado='RESERVED'`)
+            .bind(account.id, nativeUuid, deviceUuid).run();
         await env.DB.prepare(`INSERT INTO connection_requests (request_id, usuario_id, pi_device_uuid, native_device_uuid, host, port, requested_transport, active_transport, state, expires_at) VALUES (?1,?2,?3,?4,?5,?6,'REVERSE_CALLER',?7,'PENDING',datetime('now','+90 seconds'))`)
             .bind(requestId, account.id, deviceUuid, nativeUuid, route.host, route.port, route.transport).run();
         return Response.json({ success: true, request: { request_id: requestId, state: "PENDING", destination_device_uuid: nativeUuid, host: route.host, port: route.port, route: "REVERSE_CALLER", transport: route.transport } }, { headers });
@@ -135,4 +142,19 @@ export async function connectionReady(request, env) {
         if (!row) throw new Error("La solicitud no está disponible para iniciar la llamada.");
         return Response.json({ success: true, request: row }, { headers });
     } catch (error) { return Response.json({ success: false, error: error.message }, { status: 409, headers }); }
+}
+
+export async function connectionCancel(request, env) {
+    try {
+        const body = await request.json();
+        const { account, deviceUuid } = await identity(request, env, body);
+        const requestId = String(body.request_id || "").trim();
+        const row = await env.DB.prepare(`SELECT * FROM connection_requests WHERE request_id=?1 AND usuario_id=?2 AND pi_device_uuid=?3`).bind(requestId, account.id, deviceUuid).first();
+        if (!row) throw new Error("Solicitud no encontrada.");
+        await env.DB.batch([
+            env.DB.prepare(`UPDATE connection_requests SET state='CANCELLED', updated_at=datetime('now') WHERE request_id=?1`).bind(requestId),
+            env.DB.prepare(`UPDATE srt_destinos SET estado='FREE', reservado_por_uuid=NULL, ultima_actualizacion=datetime('now') WHERE usuario_id=?1 AND equipo_uuid=?2 AND reservado_por_uuid=?3 AND estado='RESERVED'`).bind(account.id, row.native_device_uuid, deviceUuid)
+        ]);
+        return Response.json({ success: true, request_id: requestId, state: "CANCELLED" }, { headers });
+    } catch (error) { return Response.json({ success: false, error: error.message }, { status: 404, headers }); }
 }
