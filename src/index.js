@@ -20,7 +20,7 @@ import { srtAllocate } from "./api/srtAllocate.js";
 import { srtRelease } from "./api/srtRelease.js";
 // ### FIX — SRT RENDEZVOUS
 import { rendezvousPoll, rendezvousReady, rendezvousResult } from "./api/rendezvous.js";
-import { connectionRequest, connectionPoll, connectionClaim, connectionStatus, connectionActivate } from "./api/connectionRequests.js";
+import { connectionRequest, connectionPoll, connectionClaim, connectionStatus, connectionActivate, connectionReady } from "./api/connectionRequests.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -222,6 +222,7 @@ export default {
         if (request.method === "POST" && url.pathname === "/api/v1/connection/claim") return await connectionClaim(request, env);
         if (request.method === "GET" && url.pathname === "/api/v1/connection/status") return await connectionStatus(request, env);
         if (request.method === "POST" && url.pathname === "/api/v1/connection/activate") return await connectionActivate(request, env);
+        if (request.method === "POST" && url.pathname === "/api/v1/connection/ready") return await connectionReady(request, env);
 
         // ==================================================
         // DEVICES LIST
