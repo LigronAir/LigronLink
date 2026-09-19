@@ -253,10 +253,12 @@ export async function srtAllocate(request, env) {
         // no es NAT traversal, es una tentativa de hairpin/autoconexión.
         // No reservamos una caja para una sesión que no puede ser válida.
         if (!useIpv6 && !useLanDirect && nativeEndpoint && piEndpoint && nativeEndpoint === piEndpoint) {
+            const lanDiagnostic = `Pi LAN=${piLanIpv4 || "NO REGISTRADA"}; Native LAN=${nativeLanIpv4 || "NO REGISTRADA"}; mismo segmento /24=${samePrivateLan(piLanIpv4, nativeLanIpv4) ? "SI" : "NO"}.`;
             return Response.json(
                 {
                     success: false,
-                    error: "Rendezvous no disponible: Pi y Native comparten la misma IP pública observada y no hay IPv6 global verificable en ambos extremos. Use LAN directa o active IPv6."
+                    // ### FIX — LAN DIRECT DIAGNOSTIC
+                    error: `Rendezvous no disponible: Pi y Native comparten la misma IP pública observada y no hay IPv6 global verificable en ambos extremos. ${lanDiagnostic}`
                 },
                 {
                     status: 409,
@@ -292,7 +294,13 @@ export async function srtAllocate(request, env) {
         }
 
         const rendezvousRoute = useLanDirect ? "LAN_DIRECT" : "RENDEZVOUS";
-        const rendezvous = String(assignment.mode || "listener").toLowerCase() === "rendezvous"
+        // ### FIX — LAN DIRECT COORDINATION
+        // Los receptores normales de Native son listeners. LAN_DIRECT invierte
+        // esa relación de forma temporal y, por tanto, siempre necesita sesión
+        // Link aunque el receptor reservado tenga modo listener.
+        const needsCoordinatedSession = useLanDirect
+            || String(assignment.mode || "listener").toLowerCase() === "rendezvous";
+        const rendezvous = needsCoordinatedSession
             ? await createRendezvousSession(env.DB, usuario.id, pi, device, assignment, piEndpoint, nativeEndpoint, useIpv6 ? "IPv6" : "IPv4", rendezvousRoute)
             : null;
 
