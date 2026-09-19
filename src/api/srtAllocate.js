@@ -30,12 +30,12 @@ function buildSrtUrl(host, port) {
 }
 
 // ### FIX — SRT RENDEZVOUS
-async function createRendezvousSession(db, usuarioId, pi, native, assignment, piEndpoint, nativeEndpoint, addressFamily) {
+async function createRendezvousSession(db, usuarioId, pi, native, assignment, piEndpoint, nativeEndpoint, addressFamily, route = "RENDEZVOUS") {
     const sessionId = `rv_${crypto.randomUUID()}`;
     const sessionPort = 13000 + Number(assignment.source_id) - 1;
-    await db.prepare(`INSERT INTO rendezvous_sessions (session_id, usuario_id, source_device_uuid, destination_device_uuid, box_id, session_port, route, pi_public_ip, native_public_ip, state, expires_at) VALUES (?1,?2,?3,?4,?5,?6,'RENDEZVOUS',?7,?8,'CREATED',datetime('now','+45 seconds'))`)
-        .bind(sessionId, usuarioId, pi.uuid, native.uuid, assignment.source_id, sessionPort, piEndpoint || null, nativeEndpoint || null).run();
-    return { session_id: sessionId, session_port: sessionPort, route: "RENDEZVOUS", address_family: addressFamily, peer_host: nativeEndpoint || assignment.host };
+    await db.prepare(`INSERT INTO rendezvous_sessions (session_id, usuario_id, source_device_uuid, destination_device_uuid, box_id, session_port, route, pi_public_ip, native_public_ip, state, expires_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'CREATED',datetime('now','+45 seconds'))`)
+        .bind(sessionId, usuarioId, pi.uuid, native.uuid, assignment.source_id, sessionPort, route, piEndpoint || null, nativeEndpoint || null).run();
+    return { session_id: sessionId, session_port: sessionPort, route, address_family: addressFamily, peer_host: nativeEndpoint || assignment.host };
 }
 
 // ### FIX — IPv6 RENDEZVOUS
@@ -54,6 +54,25 @@ async function usableIpv6Endpoint(db, deviceUuid) {
     } catch (error) {
         // La migración de capabilities puede no estar aplicada todavía.
         console.warn("IPv6 capabilities unavailable:", error.message);
+        return "";
+    }
+}
+
+function samePrivateLan(piAddress, nativeAddress) {
+    const parse = (value) => String(value).split(".").map(Number);
+    const pi = parse(piAddress);
+    const native = parse(nativeAddress);
+    const valid = (parts) => parts.length === 4 && parts.every((part) => Number.isInteger(part) && part >= 0 && part <= 255);
+    const privateV4 = (parts) => parts[0] === 10 || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) || (parts[0] === 192 && parts[1] === 168);
+    return valid(pi) && valid(native) && privateV4(pi) && privateV4(native) && pi.slice(0, 3).join(".") === native.slice(0, 3).join(".");
+}
+
+async function lanIpv4Endpoint(db, deviceUuid) {
+    try {
+        const row = await db.prepare(`SELECT capabilities_json FROM device_network_capabilities WHERE device_uuid=?1`).bind(deviceUuid).first();
+        const capabilities = JSON.parse(row?.capabilities_json || "{}");
+        return capabilities.srt_ipv4 === true ? String(capabilities.ipv4_address || "").trim() : "";
+    } catch (error) {
         return "";
     }
 }
@@ -216,20 +235,24 @@ export async function srtAllocate(request, env) {
         // ### FIX — IPv6 RENDEZVOUS
         // IPv6 global se intenta primero: no depende del NAT IPv4 compartido.
         // Si falta en cualquiera de los dos extremos, se conserva el flujo IPv4.
-        const [piIpv6, nativeIpv6] = await Promise.all([
+        const [piIpv6, nativeIpv6, piLanIpv4, nativeLanIpv4] = await Promise.all([
             usableIpv6Endpoint(env.DB, pi.uuid),
-            usableIpv6Endpoint(env.DB, device.uuid)
+            usableIpv6Endpoint(env.DB, device.uuid),
+            lanIpv4Endpoint(env.DB, pi.uuid),
+            lanIpv4Endpoint(env.DB, device.uuid)
         ]);
         const useIpv6 = Boolean(piIpv6 && nativeIpv6);
-        const piEndpoint = useIpv6 ? piIpv6 : String(pi.public_ip || "").trim();
-        const nativeEndpoint = useIpv6 ? nativeIpv6 : String(device.public_ip || "").trim();
+        const sharedIpv4 = String(pi.public_ip || "").trim() && String(pi.public_ip || "").trim() === String(device.public_ip || "").trim();
+        const useLanDirect = !useIpv6 && sharedIpv4 && samePrivateLan(piLanIpv4, nativeLanIpv4);
+        const piEndpoint = useIpv6 ? piIpv6 : useLanDirect ? piLanIpv4 : String(pi.public_ip || "").trim();
+        const nativeEndpoint = useIpv6 ? nativeIpv6 : useLanDirect ? nativeLanIpv4 : String(device.public_ip || "").trim();
 
         // Rendezvous IPv4 necesita dos extremos de red distintos. Cuando Link
         // observa la misma IPv4 pública para Pi y Native, la ruta actual
         // estaría mandando a ambos a esa misma dirección y al mismo puerto:
         // no es NAT traversal, es una tentativa de hairpin/autoconexión.
         // No reservamos una caja para una sesión que no puede ser válida.
-        if (!useIpv6 && nativeEndpoint && piEndpoint && nativeEndpoint === piEndpoint) {
+        if (!useIpv6 && !useLanDirect && nativeEndpoint && piEndpoint && nativeEndpoint === piEndpoint) {
             return Response.json(
                 {
                     success: false,
@@ -268,8 +291,9 @@ export async function srtAllocate(request, env) {
 
         }
 
+        const rendezvousRoute = useLanDirect ? "LAN_DIRECT" : "RENDEZVOUS";
         const rendezvous = String(assignment.mode || "listener").toLowerCase() === "rendezvous"
-            ? await createRendezvousSession(env.DB, usuario.id, pi, device, assignment, piEndpoint, nativeEndpoint, useIpv6 ? "IPv6" : "IPv4")
+            ? await createRendezvousSession(env.DB, usuario.id, pi, device, assignment, piEndpoint, nativeEndpoint, useIpv6 ? "IPv6" : "IPv4", rendezvousRoute)
             : null;
 
         return Response.json(
@@ -281,7 +305,7 @@ export async function srtAllocate(request, env) {
                         assignment.host,
                         assignment.port
                     ),
-                    route: rendezvous ? "RENDEZVOUS" : "DIRECT",
+                    route: rendezvous ? rendezvousRoute : "DIRECT",
                     rendezvous,
 
                     // ### FIX
