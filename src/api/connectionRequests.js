@@ -38,7 +38,15 @@ async function reverseCallerRoute(env, pi, native, requestId) {
     const nativeV6 = String(nativeCaps.ipv6_address || "").trim();
     let host = "";
     let transport = "";
-    if (piCaps.srt_ipv6 === true && nativeCaps.srt_ipv6 === true && piCaps.ipv6_internet === true && nativeCaps.ipv6_internet === true && piV6) {
+    const piTailnet = String(piCaps.tailscale_tailnet || "").trim().toLowerCase();
+    const nativeTailnet = String(nativeCaps.tailscale_tailnet || "").trim().toLowerCase();
+    const piTailscale = String(piCaps.tailscale_ipv4_address || "").trim();
+    if (piCaps.tailscale_available === true && nativeCaps.tailscale_available === true && piTailnet && piTailnet === nativeTailnet && /^100\.(6[4-9]|[7-9]\d|1\d\d|2[0-5]\d)\./.test(piTailscale)) {
+        // Preferred for CGNAT: both peers make only outbound WireGuard/DERP
+        // connections; Link merely selects this private overlay endpoint.
+        host = piTailscale;
+        transport = "TAILSCALE_REVERSE_CALLER";
+    } else if (piCaps.srt_ipv6 === true && nativeCaps.srt_ipv6 === true && piCaps.ipv6_internet === true && nativeCaps.ipv6_internet === true && piV6) {
         host = piV6;
         transport = "IPV6_REVERSE_CALLER";
     } else {
@@ -52,7 +60,7 @@ async function reverseCallerRoute(env, pi, native, requestId) {
             transport = "IPV4_REVERSE_CALLER";
         }
     }
-    if (!host) throw new Error("No hay una ruta alcanzable para que Native llame a Pi: IPv6 global no disponible y la IPv4 pública compartida no admite hairpin. Registre ambos extremos en la misma LAN o use IPv6 global.");
+    if (!host) throw new Error("No hay ruta directa: Tailscale no está disponible en ambos equipos de la misma red, IPv6 global no está disponible y la IPv4 pública compartida no admite hairpin.");
     // Deterministic per request, and separate from Native's normal box ports.
     const port = 13000 + (Array.from(requestId).reduce((value, character) => value + character.charCodeAt(0), 0) % 1000);
     return { host, port, transport };
