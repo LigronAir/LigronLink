@@ -31,6 +31,12 @@ function isMissingRuntimeStatusTable(error) {
 
 }
 
+function isMissingNetworkCapabilitiesTable(error) {
+    return String(error?.message || error)
+        .toLowerCase()
+        .includes("no such table: device_network_capabilities");
+}
+
 // ==========================================================
 // GET /api/v1/devices
 // ==========================================================
@@ -195,6 +201,29 @@ export async function devicesGet(request, env) {
                 ])
             );
 
+        // Red realmente publicada por cada equipo. Se expone sólo a equipos
+        // de la misma cuenta y permite verificar qué endpoint puede escoger
+        // Link antes de intentar una emisión.
+        let capabilityRows = [];
+        try {
+            capabilityRows = (await env.DB.prepare(`SELECT c.device_uuid, c.capabilities_json, c.updated_at FROM device_network_capabilities c INNER JOIN equipos e ON e.uuid=c.device_uuid WHERE e.usuario_id=?1`)
+                .bind(usuario.id).all()).results || [];
+        } catch (error) {
+            if (!isMissingNetworkCapabilitiesTable(error)) throw error;
+        }
+        const networkByDevice = new Map(capabilityRows.map((row) => {
+            let capabilities = {};
+            try { capabilities = JSON.parse(row.capabilities_json || "{}"); } catch { capabilities = {}; }
+            return [row.device_uuid, {
+                ipv4_address: String(capabilities.ipv4_address || ""),
+                ipv6_address: String(capabilities.ipv6_address || ""),
+                tailscale_available: capabilities.tailscale_available === true,
+                tailscale_ipv4_address: String(capabilities.tailscale_ipv4_address || ""),
+                tailscale_tailnet: String(capabilities.tailscale_tailnet || ""),
+                updated_at: row.updated_at || null
+            }];
+        }));
+
         const srtByDevice =
             new Map(
                 srtRows.map((row) => [
@@ -224,6 +253,8 @@ export async function devicesGet(request, env) {
                     },
                 srt_receiver_list:
                     receiversByDevice.get(device.uuid) || [],
+                network_status:
+                    networkByDevice.get(device.uuid) || null,
                 runtime_status:
                     runtimeByDevice.get(device.uuid) || null
             }));

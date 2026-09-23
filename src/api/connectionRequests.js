@@ -56,7 +56,10 @@ async function directCallerRoute(env, pi, native) {
             transport = "LAN_DIRECT_CALLER";
         }
     }
-    if (!host) throw new Error("No hay ruta directa hacia Native: activa Tailscale en ambos equipos o conéctalos a la misma LAN.");
+    // Si no hay overlay/LAN/IPv6, la caja de Native puede haber publicado
+    // un endpoint SRT exterior. Se conocerá al reclamarla; Pi sigue siendo
+    // caller y no se bloquea al operador por carecer de Tailscale.
+    if (!host) transport = "NATIVE_PUBLIC_DIRECT";
     return { host, transport };
 }
 
@@ -104,10 +107,16 @@ export async function connectionClaim(request, env) {
         const receiver = await env.DB.prepare(`UPDATE srt_destinos SET estado='RESERVED', reservado_por_uuid=?1, ultima_actualizacion=datetime('now') WHERE equipo_uuid=?2 AND usuario_id=?3 AND source_id=?4 AND estado='FREE' RETURNING host, port, source_id, nombre`)
             .bind(pending.pi_device_uuid, deviceUuid, account.id, sourceId).first();
         if (!receiver) throw new Error("La caja seleccionada ya no está libre.");
+        const targetHost = String(pending.host || receiver.host || "").trim();
+        if (!targetHost || !receiver.port) {
+            await env.DB.prepare(`UPDATE srt_destinos SET estado='FREE', reservado_por_uuid=NULL, ultima_actualizacion=datetime('now') WHERE equipo_uuid=?1 AND usuario_id=?2 AND source_id=?3 AND reservado_por_uuid=?4`)
+                .bind(deviceUuid, account.id, receiver.source_id, pending.pi_device_uuid).run();
+            throw new Error("Native no ha publicado un endpoint SRT exterior ni una ruta Tailscale/LAN utilizable.");
+        }
         const state = pending.state === "PI_READY" ? "CALLER_REQUIRED" : "BOX_READY";
-        await env.DB.prepare(`UPDATE connection_requests SET source_id=?2, port=?3, state=?4, updated_at=datetime('now') WHERE request_id=?1`)
-            .bind(requestId, receiver.source_id, receiver.port, state).run();
-        return Response.json({ success: true, request_id: requestId, source_id: receiver.source_id, host: pending.host, port: receiver.port, state }, { headers });
+        await env.DB.prepare(`UPDATE connection_requests SET source_id=?2, host=?3, port=?4, state=?5, updated_at=datetime('now') WHERE request_id=?1`)
+            .bind(requestId, receiver.source_id, targetHost, receiver.port, state).run();
+        return Response.json({ success: true, request_id: requestId, source_id: receiver.source_id, host: targetHost, port: receiver.port, state }, { headers });
     } catch (error) { return Response.json({ success: false, error: error.message }, { status: 409, headers }); }
 }
 
