@@ -32,38 +32,32 @@ async function capabilities(env, uuid) {
 // Pi must expose a listener before Native is told to call.  The route is
 // selected from addresses actually reported by both endpoints; a shared
 // public IPv4 is never presented as a usable peer address (hairpin trap).
-async function reverseCallerRoute(env, pi, native, requestId) {
+// Pi is always the media caller. Link returns the Native listener endpoint;
+// media never transits Link.
+async function directCallerRoute(env, pi, native) {
     const [piCaps, nativeCaps] = await Promise.all([capabilities(env, pi.uuid), capabilities(env, native.uuid)]);
-    const piV6 = String(piCaps.ipv6_address || "").trim();
     const nativeV6 = String(nativeCaps.ipv6_address || "").trim();
     let host = "";
     let transport = "";
     const piTailnet = String(piCaps.tailscale_tailnet || "").trim().toLowerCase();
     const nativeTailnet = String(nativeCaps.tailscale_tailnet || "").trim().toLowerCase();
-    const piTailscale = String(piCaps.tailscale_ipv4_address || "").trim();
-    if (piCaps.tailscale_available === true && nativeCaps.tailscale_available === true && piTailnet && piTailnet === nativeTailnet && /^100\.(6[4-9]|[7-9]\d|1\d\d|2[0-5]\d)\./.test(piTailscale)) {
-        // Preferred for CGNAT: both peers make only outbound WireGuard/DERP
-        // connections; Link merely selects this private overlay endpoint.
-        host = piTailscale;
-        transport = "TAILSCALE_REVERSE_CALLER";
-    } else if (piCaps.srt_ipv6 === true && nativeCaps.srt_ipv6 === true && piCaps.ipv6_internet === true && nativeCaps.ipv6_internet === true && piV6) {
-        host = piV6;
-        transport = "IPV6_REVERSE_CALLER";
+    const nativeTailscale = String(nativeCaps.tailscale_ipv4_address || "").trim();
+    if (piCaps.tailscale_available === true && nativeCaps.tailscale_available === true && piTailnet && piTailnet === nativeTailnet && /^100\.(6[4-9]|[7-9]\d|1\d\d|2[0-5]\d)\./.test(nativeTailscale)) {
+        host = nativeTailscale;
+        transport = "TAILSCALE_DIRECT_CALLER";
+    } else if (piCaps.srt_ipv6 === true && nativeCaps.srt_ipv6 === true && piCaps.ipv6_internet === true && nativeCaps.ipv6_internet === true && nativeV6) {
+        host = nativeV6;
+        transport = "IPV6_DIRECT_CALLER";
     } else {
         const piLan = String(piCaps.ipv4_address || "").trim();
         const nativeLan = String(nativeCaps.ipv4_address || "").trim();
         if (sameLan(piLan, nativeLan)) {
-            host = piLan;
-            transport = "LAN_REVERSE_CALLER";
-        } else if (String(pi.public_ip || "").trim() && String(pi.public_ip || "").trim() !== String(native.public_ip || "").trim()) {
-            host = String(pi.public_ip).trim();
-            transport = "IPV4_REVERSE_CALLER";
+            host = nativeLan;
+            transport = "LAN_DIRECT_CALLER";
         }
     }
-    if (!host) throw new Error("No hay ruta directa: Tailscale no está disponible en ambos equipos de la misma red, IPv6 global no está disponible y la IPv4 pública compartida no admite hairpin.");
-    // Deterministic per request, and separate from Native's normal box ports.
-    const port = 13000 + (Array.from(requestId).reduce((value, character) => value + character.charCodeAt(0), 0) % 1000);
-    return { host, port, transport };
+    if (!host) throw new Error("No hay ruta directa hacia Native: activa Tailscale en ambos equipos o conéctalos a la misma LAN.");
+    return { host, transport };
 }
 
 export async function connectionRequest(request, env) {
@@ -74,7 +68,7 @@ export async function connectionRequest(request, env) {
         const native = await findDeviceByUuid(env.DB, nativeUuid);
         if (!native || Number(native.usuario_id) !== Number(account.id) || !String(native.tipo || "").toLowerCase().includes("ligronair")) throw new Error("Destino Native no disponible.");
         const requestId = `conn_${crypto.randomUUID()}`;
-        const route = await reverseCallerRoute(env, pi, native, requestId);
+        const route = await directCallerRoute(env, pi, native);
         // A Pi may have been stopped, restarted, or changed destination.
         // Its old control request must never keep a Native box apparently
         // reserved when there is no active caller attempt.
@@ -82,9 +76,9 @@ export async function connectionRequest(request, env) {
             .bind(account.id, deviceUuid, nativeUuid).run();
         await env.DB.prepare(`UPDATE srt_destinos SET estado='FREE', reservado_por_uuid=NULL, ultima_actualizacion=datetime('now') WHERE usuario_id=?1 AND equipo_uuid=?2 AND reservado_por_uuid=?3 AND estado='RESERVED'`)
             .bind(account.id, nativeUuid, deviceUuid).run();
-        await env.DB.prepare(`INSERT INTO connection_requests (request_id, usuario_id, pi_device_uuid, native_device_uuid, host, port, requested_transport, active_transport, state, expires_at) VALUES (?1,?2,?3,?4,?5,?6,'REVERSE_CALLER',?7,'PENDING',datetime('now','+90 seconds'))`)
-            .bind(requestId, account.id, deviceUuid, nativeUuid, route.host, route.port, route.transport).run();
-        return Response.json({ success: true, request: { request_id: requestId, state: "PENDING", destination_device_uuid: nativeUuid, host: route.host, port: route.port, route: "REVERSE_CALLER", transport: route.transport } }, { headers });
+        await env.DB.prepare(`INSERT INTO connection_requests (request_id, usuario_id, pi_device_uuid, native_device_uuid, host, port, requested_transport, active_transport, state, expires_at) VALUES (?1,?2,?3,?4,?5,NULL,'DIRECT_CALLER',?6,'PENDING',datetime('now','+90 seconds'))`)
+            .bind(requestId, account.id, deviceUuid, nativeUuid, route.host, route.transport).run();
+        return Response.json({ success: true, request: { request_id: requestId, state: "PENDING", destination_device_uuid: nativeUuid, host: route.host, port: 0, route: "DIRECT_CALLER", transport: route.transport } }, { headers });
     } catch (error) { return Response.json({ success: false, error: error.message }, { status: 400, headers }); }
 }
 
@@ -111,9 +105,9 @@ export async function connectionClaim(request, env) {
             .bind(pending.pi_device_uuid, deviceUuid, account.id, sourceId).first();
         if (!receiver) throw new Error("La caja seleccionada ya no está libre.");
         const state = pending.state === "PI_READY" ? "CALLER_REQUIRED" : "BOX_READY";
-        await env.DB.prepare(`UPDATE connection_requests SET source_id=?2, state=?3, updated_at=datetime('now') WHERE request_id=?1`)
-            .bind(requestId, receiver.source_id, state).run();
-        return Response.json({ success: true, request_id: requestId, source_id: receiver.source_id, host: pending.host, port: pending.port, state }, { headers });
+        await env.DB.prepare(`UPDATE connection_requests SET source_id=?2, port=?3, state=?4, updated_at=datetime('now') WHERE request_id=?1`)
+            .bind(requestId, receiver.source_id, receiver.port, state).run();
+        return Response.json({ success: true, request_id: requestId, source_id: receiver.source_id, host: pending.host, port: receiver.port, state }, { headers });
     } catch (error) { return Response.json({ success: false, error: error.message }, { status: 409, headers }); }
 }
 
@@ -148,7 +142,7 @@ export async function connectionReady(request, env) {
         // PI_READY turns the short negotiation lease into an active stream
         // lease.  It is subsequently governed by Pi presence/cancel, not an
         // arbitrary 90-second timeout in the middle of live video.
-        const row = await env.DB.prepare(`UPDATE connection_requests SET state=CASE WHEN source_id IS NULL THEN 'PI_READY' ELSE 'CALLER_REQUIRED' END, expires_at=datetime('now','+12 hours'), updated_at=datetime('now') WHERE request_id=?1 AND usuario_id=?2 AND pi_device_uuid=?3 AND state IN ('PENDING','BOX_READY') AND datetime(expires_at)>datetime('now') RETURNING request_id, source_id, host, port, state`)
+        const row = await env.DB.prepare(`UPDATE connection_requests SET state='CALLER_ACTIVE', expires_at=datetime('now','+12 hours'), updated_at=datetime('now') WHERE request_id=?1 AND usuario_id=?2 AND pi_device_uuid=?3 AND state='BOX_READY' AND datetime(expires_at)>datetime('now') RETURNING request_id, source_id, host, port, state`)
             .bind(requestId, account.id, deviceUuid).first();
         if (!row) throw new Error("La solicitud no está disponible para iniciar la llamada.");
         return Response.json({ success: true, request: row }, { headers });
