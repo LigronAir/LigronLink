@@ -35,6 +35,31 @@ function isMissingRuntimeStatusTable(error) {
 
 }
 
+function isMissingNetworkCapabilitiesTable(error) {
+    return String(error?.message || error)
+        .toLowerCase()
+        .includes("no such table: device_network_capabilities");
+}
+
+async function syncNetworkCapabilities(db, deviceUuid, capabilities) {
+    if (!capabilities || typeof capabilities !== "object") return false;
+    try {
+        await db.prepare(`
+            INSERT INTO device_network_capabilities
+                (device_uuid, capabilities_json, updated_at)
+            VALUES (?1, ?2, datetime('now'))
+            ON CONFLICT(device_uuid) DO UPDATE SET
+                capabilities_json=excluded.capabilities_json,
+                updated_at=datetime('now')
+            WHERE capabilities_json != excluded.capabilities_json
+        `).bind(deviceUuid, JSON.stringify(capabilities)).run();
+        return true;
+    } catch (error) {
+        if (!isMissingNetworkCapabilitiesTable(error)) throw error;
+        return false;
+    }
+}
+
 // ==========================================================
 // POST /api/v1/device/status
 // ==========================================================
@@ -156,6 +181,14 @@ export async function deviceStatus(request, env) {
             await touchDevicePresence(env.DB, device.uuid, usuario.id);
         }
 
+        // Pi envía esta fotografía con su heartbeat. Es información de
+        // control; no lleva vídeo ni secretos de Tailscale.
+        const networkStatusAvailable = await syncNetworkCapabilities(
+            env.DB,
+            device.uuid,
+            body.network_capabilities
+        );
+
         let runtimeStatusAvailable = true;
 
         try {
@@ -194,6 +227,7 @@ export async function deviceStatus(request, env) {
             {
                 success: true,
                 runtime_status_available: runtimeStatusAvailable,
+                network_status_available: networkStatusAvailable,
                 peer: await findTargetPresence(
                     env.DB,
                     usuario.id,

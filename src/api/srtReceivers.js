@@ -20,6 +20,29 @@ const corsHeaders = {
     "Access-Control-Allow-Headers": "Content-Type"
 };
 
+async function syncNetworkCapabilities(db, deviceUuid, capabilities) {
+    if (!capabilities || typeof capabilities !== "object") return false;
+    try {
+        await db.prepare(`
+            INSERT INTO device_network_capabilities
+                (device_uuid, capabilities_json, updated_at)
+            VALUES (?1, ?2, datetime('now'))
+            ON CONFLICT(device_uuid) DO UPDATE SET
+                capabilities_json=excluded.capabilities_json,
+                updated_at=datetime('now')
+            WHERE capabilities_json != excluded.capabilities_json
+        `).bind(deviceUuid, JSON.stringify(capabilities)).run();
+        return true;
+    } catch (error) {
+        // La migración puede llegar después del binario Native. El listener
+        // no debe quedar inutilizado por faltar sólo el panel de diagnóstico.
+        if (String(error?.message || error).toLowerCase().includes("no such table: device_network_capabilities")) {
+            return false;
+        }
+        throw error;
+    }
+}
+
 // ==========================================================
 // POST /api/v1/srt/receivers
 // ==========================================================
@@ -62,6 +85,11 @@ export async function srtReceivers(request, env) {
         const receivers =
             Array.isArray(body.receivers)
                 ? body.receivers
+                : null;
+
+        const networkCapabilities =
+            body.network_capabilities && typeof body.network_capabilities === "object"
+                ? body.network_capabilities
                 : null;
 
         // --------------------------------------------------
@@ -419,6 +447,14 @@ export async function srtReceivers(request, env) {
             usuario.id
         );
 
+        // Native renueva esta fotografía con su heartbeat de listeners. Así
+        // Link puede comparar Pi y Native sin que el operador abra Tailscale.
+        const networkStatusAvailable = await syncNetworkCapabilities(
+            env.DB,
+            device.uuid,
+            networkCapabilities
+        );
+
         // A reservation is a live control-plane lease, not historical UI
         // data.  When its Pi has stopped heartbeating, free the box on the
         // next Native snapshot so it cannot remain a phantom reservation.
@@ -448,6 +484,7 @@ export async function srtReceivers(request, env) {
                 host_default: normalizados[0]?.host || null,
                 receivers: guardados,
                 count: guardados.length,
+                network_status_available: networkStatusAvailable,
                 snapshot_changed: !unchanged,
                 linked_pis: await findLinkedPiStatuses(env.DB, usuario.id, device.uuid),
                 // Native receives this response reliably on every snapshot.

@@ -220,6 +220,7 @@ export async function devicesGet(request, env) {
                 tailscale_available: capabilities.tailscale_available === true,
                 tailscale_ipv4_address: String(capabilities.tailscale_ipv4_address || ""),
                 tailscale_tailnet: String(capabilities.tailscale_tailnet || ""),
+                tailscale_state: String(capabilities.tailscale_state || "UNKNOWN").toUpperCase(),
                 updated_at: row.updated_at || null
             }];
         }));
@@ -240,7 +241,22 @@ export async function devicesGet(request, env) {
             );
 
         const devices =
-            devicesRaw.map((device) => ({
+            devicesRaw.map((device) => {
+                const publishedNetwork = networkByDevice.get(device.uuid);
+                const networkStatus = publishedNetwork
+                    ? {
+                        ...publishedNetwork,
+                        last_seen_at: device.ultima_conexion || null,
+                        sync_state: String(device.estado).toUpperCase() === "ONLINE"
+                            ? "SYNCED" : "STALE"
+                    }
+                    : {
+                        tailscale_available: false,
+                        tailscale_state: "NO_REPORT",
+                        last_seen_at: device.ultima_conexion || null,
+                        sync_state: "NO_REPORT"
+                    };
+                return ({
                 ...device,
                 srt_receivers:
                     srtByDevice.get(device.uuid) || {
@@ -253,11 +269,11 @@ export async function devicesGet(request, env) {
                     },
                 srt_receiver_list:
                     receiversByDevice.get(device.uuid) || [],
-                network_status:
-                    networkByDevice.get(device.uuid) || null,
+                network_status: networkStatus,
                 runtime_status:
                     runtimeByDevice.get(device.uuid) || null
-            }));
+                });
+            });
 
         // --------------------------------------------------
         // Respuesta
