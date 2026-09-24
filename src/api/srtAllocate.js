@@ -212,31 +212,6 @@ export async function srtAllocate(request, env) {
 
         }
 
-        // Una sola operación reserva un listener que Native ya tiene abierto.
-        const assignment =
-            await allocateSrtDestination(
-                env.DB,
-                usuario.id,
-                piUuid,
-                deviceUuid,
-                sourceId
-            );
-
-        if (!assignment) {
-
-            return Response.json(
-                {
-                    success: false,
-                    error: "No hay receptores SRT libres en ese LigronAir."
-                },
-                {
-                    status: 409,
-                    headers: corsHeaders
-                }
-            );
-
-        }
-
         const [piNetwork, nativeNetwork] = await Promise.all([
             networkCapabilities(env.DB, pi.uuid),
             networkCapabilities(env.DB, device.uuid)
@@ -246,24 +221,48 @@ export async function srtAllocate(request, env) {
         const nativeTailscale = tailscaleEndpoint(nativeNetwork);
         const piLan = String(piNetwork.ipv4_address || "").trim();
         const nativeLan = String(nativeNetwork.ipv4_address || "").trim();
-
-        let host = String(assignment.host || "").trim();
-        let transport = "NATIVE_PUBLIC_DIRECT";
-        if (piNetwork.tailscale_available === true
+        const useLigronTail = piNetwork.tailscale_available === true
             && nativeNetwork.tailscale_available === true
-            && piTailnet && piTailnet === nativeTailnet && nativeTailscale) {
-            host = nativeTailscale;
-            transport = "TAILSCALE_DIRECT_CALLER";
-        } else if (samePrivateLan(piLan, nativeLan)) {
-            host = nativeLan;
-            transport = "LAN_DIRECT_CALLER";
+            && piTailnet && piTailnet === nativeTailnet && Boolean(nativeTailscale);
+        const useLan = !useLigronTail && samePrivateLan(piLan, nativeLan);
+
+        // Datos móviles -> Wi-Fi doméstico no poseen una ruta SRT entrante
+        // fiable por defecto. Nunca se cae silenciosamente a una IP pública
+        // observada: se exige LigronTail compartido o una LAN real.
+        if (!useLigronTail && !useLan) {
+            return Response.json(
+                {
+                    success: false,
+                    error: "No hay una ruta directa comprobada hacia Native. Para Pi con datos móviles, LigronTail debe estar ACTIVO en Pi y Native dentro del mismo tailnet."
+                },
+                { status: 409, headers: corsHeaders }
+            );
         }
 
-        // Nunca dejar una caja bloqueada si Native publicó una fotografía rota.
-        if (!host || !Number(assignment.port)) {
+        // Sólo después de validar la ruta reservamos el listener real.
+        const assignment = await allocateSrtDestination(
+            env.DB,
+            usuario.id,
+            piUuid,
+            deviceUuid,
+            sourceId
+        );
+        if (!assignment) {
+            return Response.json(
+                { success: false, error: "No hay receptores SRT libres en ese LigronAir." },
+                { status: 409, headers: corsHeaders }
+            );
+        }
+
+        const host = useLigronTail ? nativeTailscale : nativeLan;
+        const transport = useLigronTail
+            ? "TAILSCALE_DIRECT_CALLER"
+            : "LAN_DIRECT_CALLER";
+
+        if (!Number(assignment.port)) {
             await releaseSrtDestination(env.DB, usuario.id, piUuid, deviceUuid);
             return Response.json(
-                { success: false, error: "LigronAir no publicó un listener SRT utilizable." },
+                { success: false, error: "LigronAir publicó una caja sin puerto SRT utilizable." },
                 { status: 409, headers: corsHeaders }
             );
         }
