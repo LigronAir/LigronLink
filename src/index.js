@@ -21,6 +21,7 @@ import { srtRelease } from "./api/srtRelease.js";
 // ### FIX — SRT RENDEZVOUS
 import { rendezvousPoll, rendezvousReady, rendezvousResult } from "./api/rendezvous.js";
 import { connectionRequest, connectionPoll, connectionClaim, connectionStatus, connectionActivate, connectionReady, connectionCancel } from "./api/connectionRequests.js";
+import { ligronTailBootstrap } from "./api/ligronTailBootstrap.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -120,6 +121,18 @@ export default {
         ) {
 
             return await deviceRegister(request, env);
+
+        }
+
+        // ==================================================
+        // LIGRONTAIL - alta automática de Native
+        // ==================================================
+        if (
+            request.method === "POST" &&
+            url.pathname === "/api/v1/ligrontail/bootstrap"
+        ) {
+
+            return await ligronTailBootstrap(request, env);
 
         }
 

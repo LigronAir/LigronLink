@@ -221,6 +221,7 @@ export async function devicesGet(request, env) {
                 tailscale_ipv4_address: String(capabilities.tailscale_ipv4_address || ""),
                 tailscale_tailnet: String(capabilities.tailscale_tailnet || ""),
                 tailscale_state: String(capabilities.tailscale_state || "UNKNOWN").toUpperCase(),
+                tailscale_provisioning_state: String(capabilities.tailscale_provisioning_state || "").toUpperCase(),
                 updated_at: row.updated_at || null
             }];
         }));

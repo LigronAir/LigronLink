@@ -9,6 +9,14 @@
 
   "workers_dev": true,
 
+  // Identificadores no secretos del plano LigronTail. Las credenciales OAuth
+  // se cargan exclusivamente como secretos de Worker, nunca en este fichero
+  // ni en Native.
+  "vars": {
+    "LIGRONTAIL_TAILNET": "ligronair.github",
+    "LIGRONTAIL_DEVICE_TAG": "tag:ligronair-native"
+  },
+
   "d1_databases": [
     {
       "binding": "DB",
