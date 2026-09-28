@@ -56,7 +56,11 @@ export async function ligronTailBootstrap(request, env) {
         const password = String(body.password || "");
         const deviceUuid = String(body.device_uuid || "").trim();
         if (!email || !password || !deviceUuid) {
-            return response({ success: false, error: "Debe validar la cuenta y el equipo antes de activar LigronTail." }, 400);
+            return response({
+                success: false,
+                code: "BOOTSTRAP_INPUT_MISSING",
+                error: "Debe validar la cuenta y el equipo antes de activar LigronTail."
+            }, 400);
         }
 
         // Esta operación crea una identidad de red. A diferencia del resto
@@ -64,11 +68,19 @@ export async function ligronTailBootstrap(request, env) {
         // sólo email + UUID.
         const account = await findUserByEmail(env.DB, email);
         if (!account || await hashPassword(password) !== account.password_hash) {
-            return response({ success: false, error: "No se pudo validar la cuenta para activar LigronTail." }, 401);
+            return response({
+                success: false,
+                code: "ACCOUNT_VALIDATION_FAILED",
+                error: "No se pudo validar la cuenta para activar LigronTail."
+            }, 401);
         }
         const device = await findDeviceByUuid(env.DB, deviceUuid);
         if (!device || Number(device.usuario_id) !== Number(account.id)) {
-            return response({ success: false, error: "El equipo no pertenece a la cuenta autenticada." }, 403);
+            return response({
+                success: false,
+                code: "DEVICE_OWNERSHIP_FAILED",
+                error: "El equipo no pertenece a la cuenta autenticada."
+            }, 403);
         }
 
         const clientId = configuredValue(env, "LIGRONTAIL_OAUTH_CLIENT_ID");
@@ -128,6 +140,10 @@ export async function ligronTailBootstrap(request, env) {
     }
     catch (error) {
         console.error("LigronTail bootstrap failed:", error?.message || error);
-        return response({ success: false, error: "No se pudo preparar LigronTail para este equipo." }, 502);
+        return response({
+            success: false,
+            code: "LIGRONTAIL_PROVIDER_FAILED",
+            error: "No se pudo preparar LigronTail para este equipo."
+        }, 502);
     }
 }
