@@ -222,6 +222,7 @@ export async function devicesGet(request, env) {
                 tailscale_tailnet: String(capabilities.tailscale_tailnet || ""),
                 tailscale_state: String(capabilities.tailscale_state || "UNKNOWN").toUpperCase(),
                 tailscale_provisioning_state: String(capabilities.tailscale_provisioning_state || "").toUpperCase(),
+                tailscale_provisioning_error: String(capabilities.tailscale_provisioning_error || ""),
                 updated_at: row.updated_at || null
             }];
         }));
