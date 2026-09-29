@@ -283,8 +283,6 @@ export async function findAvailableSrtDevices(db, usuarioId) {
                   'ligronair native',
                   'ligronair_native'
               )
-              AND s.host IS NOT NULL
-              AND TRIM(s.host) <> ''
               AND s.port BETWEEN 1 AND 65535
             GROUP BY
                 s.equipo_uuid,
@@ -335,8 +333,6 @@ export async function findAvailableSrtDestinations(db, usuarioId) {
                   'ligronair native',
                   'ligronair_native'
               )
-              AND s.host IS NOT NULL
-              AND TRIM(s.host) <> ''
               AND s.port BETWEEN 1 AND 65535
             ORDER BY
                 e.alias ASC,
@@ -383,8 +379,6 @@ export async function allocateSrtDestination(db, usuarioId, piUuid, deviceUuid, 
                       'ligronair native',
                       'ligronair_native'
                   )
-                  AND s.host IS NOT NULL
-                  AND TRIM(s.host) <> ''
                   AND s.port BETWEEN 1 AND 65535
                 ORDER BY
                     s.source_id ASC

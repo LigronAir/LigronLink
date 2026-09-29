@@ -120,6 +120,23 @@ export async function srtRelease(request, env) {
                 deviceUuid
             );
 
+        // Revocar la credencial del relay inmediatamente al liberar la caja.
+        // La siguiente instantánea de Native restaurará su listener directo.
+        try {
+            await env.DB.prepare(`
+                UPDATE relay_sessions
+                SET state='RELEASED', updated_at=datetime('now')
+                WHERE usuario_id=?1 AND pi_device_uuid=?2 AND native_device_uuid=?3
+                  AND state='ACTIVE'
+            `).bind(usuario.id, piUuid, deviceUuid).run();
+        } catch (relayError) {
+            // Backward-compatible rollout: releasing a traditional direct
+            // booking must keep working until the relay schema is migrated.
+            if (!String(relayError?.message || relayError).includes("no such table")) {
+                throw relayError;
+            }
+        }
+
         return Response.json(
             {
                 success: true,

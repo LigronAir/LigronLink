@@ -13,6 +13,7 @@ import {
     replaceSrtDestinations
 } from "../database/srtDestinations.js";
 import { findLinkedPiStatuses } from "../database/peerStatus.js";
+import { findRelaySessionsForNative, relayConfiguration } from "./ligronRelay.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -354,28 +355,16 @@ export async function srtReceivers(request, env) {
 
             }
 
-            if (!host) {
-
-                return Response.json(
-                    {
-                        success: false,
-                        error: `Native no publicó la dirección SRT exterior para source_id ${sourceId}.`
-                    },
-                    {
-                        status: 400,
-                        headers: corsHeaders
-                    }
-                );
-
-            }
-
             const ipv4Parts = host.split(".");
             const validIpv4 =
                 ipv4Parts.length === 4 &&
                 ipv4Parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255);
             const validIpv6 = host.includes(":") && /^[0-9a-f:]+$/i.test(host);
 
-            if (!validIpv4 && !validIpv6) {
+            // Relay is now the primary route, so a Native behind CGNAT or a
+            // desktop VPN can publish available boxes without inventing a
+            // public host. A non-empty direct endpoint remains validated.
+            if (host && !validIpv4 && !validIpv6) {
                 return Response.json(
                     {
                         success: false,
@@ -502,7 +491,13 @@ export async function srtReceivers(request, env) {
                       AND datetime(pi.ultima_conexion)>=datetime('now','-45 seconds')
                       AND request.state IN ('PENDING','PI_READY','BOX_READY','CALLER_REQUIRED')
                     ORDER BY request.created_at ASC
-                `).bind(usuario.id, device.uuid).all()).results || []
+                `).bind(usuario.id, device.uuid).all()).results || [],
+                relay_sessions: await findRelaySessionsForNative(
+                    env.DB,
+                    usuario.id,
+                    device.uuid,
+                    relayConfiguration(env),
+                )
             },
             {
                 headers: corsHeaders

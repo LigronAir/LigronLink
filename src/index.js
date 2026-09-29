@@ -22,6 +22,7 @@ import { srtRelease } from "./api/srtRelease.js";
 import { rendezvousPoll, rendezvousReady, rendezvousResult } from "./api/rendezvous.js";
 import { connectionRequest, connectionPoll, connectionClaim, connectionStatus, connectionActivate, connectionReady, connectionCancel } from "./api/connectionRequests.js";
 import { ligronTailBootstrap } from "./api/ligronTailBootstrap.js";
+import { ligronRelayAuth } from "./api/ligronRelay.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -134,6 +135,12 @@ export default {
 
             return await ligronTailBootstrap(request, env);
 
+        }
+
+        // MediaMTX calls this endpoint to validate one relay session. It is
+        // intentionally separate from user-facing CORS/API operations.
+        if (request.method === "POST" && url.pathname === "/api/v1/relay/auth") {
+            return await ligronRelayAuth(request, env);
         }
 
         // ==================================================

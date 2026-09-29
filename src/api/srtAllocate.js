@@ -6,6 +6,7 @@
 import { findDeviceByUuid } from "../database/devices.js";
 import { allocateSrtDestination, releaseSrtDestination } from "../database/srtDestinations.js";
 import { findUserByEmail } from "../database/users.js";
+import { createRelaySession, relayConfiguration } from "./ligronRelay.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -212,6 +213,7 @@ export async function srtAllocate(request, env) {
 
         }
 
+        const relay = relayConfiguration(env);
         const [piNetwork, nativeNetwork] = await Promise.all([
             networkCapabilities(env.DB, pi.uuid),
             networkCapabilities(env.DB, device.uuid)
@@ -226,14 +228,16 @@ export async function srtAllocate(request, env) {
             && piTailnet && piTailnet === nativeTailnet && Boolean(nativeTailscale);
         const useLan = !useLigronTail && samePrivateLan(piLan, nativeLan);
 
-        // Datos móviles -> Wi-Fi doméstico no poseen una ruta SRT entrante
-        // fiable por defecto. Nunca se cae silenciosamente a una IP pública
-        // observada: se exige LigronTail compartido o una LAN real.
-        if (!useLigronTail && !useLan) {
+        // LigronRelay es la vía principal: Pi y Native realizan ambas una
+        // llamada saliente autenticada al relay. Por ello funciona incluso
+        // detrás de CGNAT y evita entregar tráfico UDP entrante a Native
+        // cuando una VPN de escritorio lo filtra. LigronTail/LAN permanecen
+        // como reserva automática si el relay aún no está desplegado.
+        if (!relay && !useLigronTail && !useLan) {
             return Response.json(
                 {
                     success: false,
-                    error: "No hay una ruta directa comprobada hacia Native. Para Pi con datos móviles, LigronTail debe estar ACTIVO en Pi y Native dentro del mismo tailnet."
+                    error: "LigronRelay no está disponible y no hay una ruta directa comprobada hacia Native. Activa LigronTail sin VPN o conecta ambos equipos a la misma LAN."
                 },
                 { status: 409, headers: corsHeaders }
             );
@@ -254,11 +258,6 @@ export async function srtAllocate(request, env) {
             );
         }
 
-        const host = useLigronTail ? nativeTailscale : nativeLan;
-        const transport = useLigronTail
-            ? "TAILSCALE_DIRECT_CALLER"
-            : "LAN_DIRECT_CALLER";
-
         if (!Number(assignment.port)) {
             await releaseSrtDestination(env.DB, usuario.id, piUuid, deviceUuid);
             return Response.json(
@@ -266,6 +265,47 @@ export async function srtAllocate(request, env) {
                 { status: 409, headers: corsHeaders }
             );
         }
+
+        if (relay) {
+            try {
+                const session = await createRelaySession(
+                    env.DB,
+                    relay,
+                    usuario.id,
+                    piUuid,
+                    deviceUuid,
+                    assignment.source_id,
+                );
+                return Response.json(
+                    {
+                        success: true,
+                        assignment: {
+                            device_uuid: assignment.equipo_uuid,
+                            // Pi only receives the publisher credential. The
+                            // reader credential is delivered separately to
+                            // the authenticated Native heartbeat.
+                            srt_url: session.publish_url,
+                            route: "RELAY",
+                            transport: "LIGRONRELAY_SRT",
+                            relay_session_id: session.session_id,
+                            source_id: assignment.source_id,
+                            receiver_name: assignment.nombre,
+                            port: relay.port,
+                            native_port: assignment.port,
+                        }
+                    },
+                    { headers: corsHeaders }
+                );
+            } catch (error) {
+                await releaseSrtDestination(env.DB, usuario.id, piUuid, deviceUuid);
+                throw new Error("LigronRelay no pudo crear una sesión segura: " + (error?.message || error));
+            }
+        }
+
+        const host = useLigronTail ? nativeTailscale : nativeLan;
+        const transport = useLigronTail
+            ? "TAILSCALE_DIRECT_CALLER"
+            : "LAN_DIRECT_CALLER";
 
         return Response.json(
             {
