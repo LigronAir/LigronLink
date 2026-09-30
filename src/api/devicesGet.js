@@ -198,6 +198,9 @@ export async function devicesGet(request, env) {
                         pipeline_active: Boolean(row.pipeline_active),
                         signal_available: Boolean(row.signal_available),
                         audio_state: row.audio_state,
+                        telemetry: (() => {
+                            try { return JSON.parse(row.telemetry_json || "{}"); } catch { return {}; }
+                        })(),
                         last_update: row.ultima_actualizacion
                     }
                 ])

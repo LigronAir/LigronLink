@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS device_runtime_status (
     pipeline_active INTEGER NOT NULL DEFAULT 0,
     signal_available INTEGER NOT NULL DEFAULT 0,
     audio_state TEXT,
+    telemetry_json TEXT,
 
     ultima_actualizacion TEXT NOT NULL,
 

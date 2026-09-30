@@ -226,7 +226,11 @@ export async function touchDevicePresence(db, uuid, usuarioId) {
 // sin transportar vídeo.
 // ==========================================================
 
-export async function updateDeviceRuntimeStatus(db, device, runtime) {
+export async function updateDeviceRuntimeStatus(db, device, runtime, includeTelemetry = true) {
+
+    const telemetryValue = includeTelemetry
+        ? JSON.stringify(runtime.telemetry && typeof runtime.telemetry === "object" ? runtime.telemetry : {})
+        : null;
 
     await db
         .prepare(
@@ -244,6 +248,7 @@ export async function updateDeviceRuntimeStatus(db, device, runtime) {
                 pipeline_active,
                 signal_available,
                 audio_state,
+                ${includeTelemetry ? "telemetry_json," : ""}
                 ultima_actualizacion
             )
             VALUES
@@ -259,6 +264,7 @@ export async function updateDeviceRuntimeStatus(db, device, runtime) {
                 ?9,
                 ?10,
                 ?11,
+                ${includeTelemetry ? "?12," : ""}
                 datetime('now')
             )
             ON CONFLICT(device_uuid)
@@ -273,6 +279,7 @@ export async function updateDeviceRuntimeStatus(db, device, runtime) {
                 pipeline_active = excluded.pipeline_active,
                 signal_available = excluded.signal_available,
                 audio_state = excluded.audio_state,
+                ${includeTelemetry ? "telemetry_json = excluded.telemetry_json," : ""}
                 ultima_actualizacion = datetime('now')
             `
         )
@@ -287,7 +294,8 @@ export async function updateDeviceRuntimeStatus(db, device, runtime) {
             runtime.streaming ? 1 : 0,
             runtime.pipeline_active ? 1 : 0,
             runtime.signal_available ? 1 : 0,
-            runtime.audio_state || null
+            runtime.audio_state || null,
+            ...(includeTelemetry ? [telemetryValue] : [])
         )
         .run();
 
@@ -299,10 +307,7 @@ export async function updateDeviceRuntimeStatus(db, device, runtime) {
 // ==========================================================
 
 export async function findRuntimeStatusByUser(db, usuarioId) {
-
-    const resultado = await db
-        .prepare(
-            `
+    const query = (withTelemetry) => `
             SELECT
                 device_uuid,
                 runtime_state,
@@ -314,15 +319,25 @@ export async function findRuntimeStatusByUser(db, usuarioId) {
                 pipeline_active,
                 signal_available,
                 audio_state,
+                ${withTelemetry ? "telemetry_json," : ""}
                 ultima_actualizacion
             FROM device_runtime_status
             WHERE usuario_id = ?1
-            `
-        )
+            `;
+    try {
+        const resultado = await db.prepare(query(true))
+            .bind(usuarioId)
+            .all();
+        return resultado.results;
+    } catch (error) {
+        // Durante la transición la vista sigue disponible aunque la migración
+        // de telemetría aún no haya sido aplicada en esa base D1.
+        if (!String(error?.message || error).toLowerCase().includes("telemetry_json")) throw error;
+        const resultado = await db.prepare(query(false))
         .bind(usuarioId)
         .all();
-
-    return resultado.results;
+        return resultado.results;
+    }
 
 }
 

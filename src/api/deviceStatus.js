@@ -41,6 +41,20 @@ function isMissingNetworkCapabilitiesTable(error) {
         .includes("no such table: device_network_capabilities");
 }
 
+function isMissingTelemetryColumn(error) {
+    return String(error?.message || error).toLowerCase().includes("telemetry_json");
+}
+
+function compactTelemetry(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    try {
+        const normalized = JSON.parse(JSON.stringify(value));
+        return JSON.stringify(normalized).length <= 4096 ? normalized : {};
+    } catch {
+        return {};
+    }
+}
+
 async function syncNetworkCapabilities(db, deviceUuid, capabilities) {
     if (!capabilities || typeof capabilities !== "object") return false;
     try {
@@ -190,6 +204,7 @@ export async function deviceStatus(request, env) {
         );
 
         let runtimeStatusAvailable = true;
+        let telemetryStatusAvailable = true;
 
         try {
 
@@ -205,21 +220,40 @@ export async function deviceStatus(request, env) {
                     streaming: Boolean(body.streaming),
                     pipeline_active: Boolean(body.pipeline_active),
                     signal_available: Boolean(body.signal_available),
-                    audio_state: String(body.audio_state || "").trim().toUpperCase()
+                    audio_state: String(body.audio_state || "").trim().toUpperCase(),
+                    telemetry: compactTelemetry(body.telemetry)
                 }
             );
 
         }
         catch (error) {
 
-            if (!isMissingRuntimeStatusTable(error)) {
+            if (isMissingTelemetryColumn(error)) {
+                telemetryStatusAvailable = false;
+                await updateDeviceRuntimeStatus(
+                    env.DB,
+                    device,
+                    {
+                        runtime_state: runtimeState,
+                        source_label: String(body.source_label || "").trim(),
+                        target_device_uuid: String(body.target_device_uuid || "").trim(),
+                        target_label: String(body.target_label || "").trim(),
+                        target_srt_url: String(body.target_srt_url || "").trim(),
+                        streaming: Boolean(body.streaming),
+                        pipeline_active: Boolean(body.pipeline_active),
+                        signal_available: Boolean(body.signal_available),
+                        audio_state: String(body.audio_state || "").trim().toUpperCase()
+                    },
+                    false
+                );
+            } else if (!isMissingRuntimeStatusTable(error)) {
                 throw error;
+            } else {
+                runtimeStatusAvailable = false;
+                console.warn(
+                    "device_runtime_status aún no existe; presencia actualizada sin runtime."
+                );
             }
-
-            runtimeStatusAvailable = false;
-            console.warn(
-                "device_runtime_status aún no existe; presencia actualizada sin runtime."
-            );
 
         }
 
@@ -227,6 +261,7 @@ export async function deviceStatus(request, env) {
             {
                 success: true,
                 runtime_status_available: runtimeStatusAvailable,
+                telemetry_status_available: telemetryStatusAvailable,
                 network_status_available: networkStatusAvailable,
                 peer: await findTargetPresence(
                     env.DB,
