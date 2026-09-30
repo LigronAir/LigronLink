@@ -7,28 +7,13 @@ import { findDeviceByUuid } from "../database/devices.js";
 import { allocateSrtDestination, releaseSrtDestination } from "../database/srtDestinations.js";
 import { findUserByEmail } from "../database/users.js";
 import { createRelaySession, relayConfiguration } from "./ligronRelay.js";
+import { buildRoutePlan, buildSrtCallerUrl, publicRoutePlan } from "./routePlanner.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type"
 };
-
-// ==========================================================
-// ### FIX
-// Construir URL SRT para Pi caller.
-// ==========================================================
-
-function buildSrtUrl(host, port) {
-
-    const normalizedHost =
-        String(host).includes(":") && !String(host).startsWith("[")
-            ? `[${host}]`
-            : host;
-
-    return `srt://${normalizedHost}:${port}?mode=caller`;
-
-}
 
 // Link sólo decide el endpoint de un listener que Native ya publicó. No crea
 // una segunda negociación al pulsar Play: eso era la carrera que dejaba a la
@@ -42,20 +27,6 @@ async function networkCapabilities(db, deviceUuid) {
         // La ruta pública sigue funcionando si la migración aún no existe.
         return {};
     }
-}
-
-function samePrivateLan(piAddress, nativeAddress) {
-    const parse = (value) => String(value).split(".").map(Number);
-    const pi = parse(piAddress);
-    const native = parse(nativeAddress);
-    const valid = (parts) => parts.length === 4 && parts.every((part) => Number.isInteger(part) && part >= 0 && part <= 255);
-    const privateV4 = (parts) => parts[0] === 10 || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) || (parts[0] === 192 && parts[1] === 168);
-    return valid(pi) && valid(native) && privateV4(pi) && privateV4(native) && pi.slice(0, 3).join(".") === native.slice(0, 3).join(".");
-}
-
-function tailscaleEndpoint(capabilities) {
-    const address = String(capabilities.tailscale_ipv4_address || "").trim();
-    return /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(address) ? address : "";
 }
 
 // ==========================================================
@@ -218,26 +189,26 @@ export async function srtAllocate(request, env) {
             networkCapabilities(env.DB, pi.uuid),
             networkCapabilities(env.DB, device.uuid)
         ]);
-        const piTailnet = String(piNetwork.tailscale_tailnet || "").trim().toLowerCase();
-        const nativeTailnet = String(nativeNetwork.tailscale_tailnet || "").trim().toLowerCase();
-        const nativeTailscale = tailscaleEndpoint(nativeNetwork);
-        const piLan = String(piNetwork.ipv4_address || "").trim();
-        const nativeLan = String(nativeNetwork.ipv4_address || "").trim();
-        const useLigronTail = piNetwork.tailscale_available === true
-            && nativeNetwork.tailscale_available === true
-            && piTailnet && piTailnet === nativeTailnet && Boolean(nativeTailscale);
-        const useLan = !useLigronTail && samePrivateLan(piLan, nativeLan);
+        const routePlan = buildRoutePlan({
+            pi,
+            native: device,
+            piNetwork,
+            nativeNetwork,
+            relay
+        });
+        const selectedRoute = routePlan.selected;
 
         // LigronRelay es la vía principal: Pi y Native realizan ambas una
         // llamada saliente autenticada al relay. Por ello funciona incluso
         // detrás de CGNAT y evita entregar tráfico UDP entrante a Native
         // cuando una VPN de escritorio lo filtra. LigronTail/LAN permanecen
         // como reserva automática si el relay aún no está desplegado.
-        if (!relay && !useLigronTail && !useLan) {
+        if (!selectedRoute) {
             return Response.json(
                 {
                     success: false,
-                    error: "LigronRelay no está disponible y no hay una ruta directa comprobada hacia Native. Activa LigronTail sin VPN o conecta ambos equipos a la misma LAN."
+                    error: "No hay una ruta de media comprobada hacia Native.",
+                    route_plan: publicRoutePlan(routePlan)
                 },
                 { status: 409, headers: corsHeaders }
             );
@@ -266,7 +237,7 @@ export async function srtAllocate(request, env) {
             );
         }
 
-        if (relay) {
+        if (selectedRoute.id === "LIGRONRELAY_SRT") {
             try {
                 const session = await createRelaySession(
                     env.DB,
@@ -292,6 +263,7 @@ export async function srtAllocate(request, env) {
                             receiver_name: assignment.nombre,
                             port: relay.port,
                             native_port: assignment.port,
+                            route_plan: publicRoutePlan(routePlan)
                         }
                     },
                     { headers: corsHeaders }
@@ -302,22 +274,22 @@ export async function srtAllocate(request, env) {
             }
         }
 
-        const host = useLigronTail ? nativeTailscale : nativeLan;
-        const transport = useLigronTail
-            ? "TAILSCALE_DIRECT_CALLER"
-            : "LAN_DIRECT_CALLER";
+        const host = selectedRoute.id === "TAILSCALE_DIRECT_CALLER"
+            ? String(nativeNetwork.tailscale_ipv4_address || "").trim()
+            : String(nativeNetwork.ipv4_address || "").trim();
 
         return Response.json(
             {
                 success: true,
                 assignment: {
                     device_uuid: assignment.equipo_uuid,
-                    srt_url: buildSrtUrl(host, assignment.port),
+                    srt_url: buildSrtCallerUrl(host, assignment.port),
                     route: "DIRECT",
-                    transport,
+                    transport: selectedRoute.id,
                     source_id: assignment.source_id,
                     receiver_name: assignment.nombre,
-                    port: assignment.port
+                    port: assignment.port,
+                    route_plan: publicRoutePlan(routePlan)
                 }
             },
             {

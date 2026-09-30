@@ -10,6 +10,8 @@ import {
 
 // ### FIX
 import { findUserByEmail } from "../database/users.js";
+import { buildRoutePlan, publicRoutePlan } from "./routePlanner.js";
+import { relayConfiguration } from "./ligronRelay.js";
 
 // ### FIX
 import {
@@ -217,6 +219,9 @@ export async function devicesGet(request, env) {
             return [row.device_uuid, {
                 ipv4_address: String(capabilities.ipv4_address || ""),
                 ipv6_address: String(capabilities.ipv6_address || ""),
+                ipv6_global: capabilities.ipv6_global === true,
+                ipv6_internet: capabilities.ipv6_internet === true,
+                srt_ipv6: capabilities.srt_ipv6 === true,
                 tailscale_available: capabilities.tailscale_available === true,
                 tailscale_ipv4_address: String(capabilities.tailscale_ipv4_address || ""),
                 tailscale_tailnet: String(capabilities.tailscale_tailnet || ""),
@@ -277,6 +282,28 @@ export async function devicesGet(request, env) {
                 });
             });
 
+        // La misma política que usa /srt/allocate se publica al panel. No
+        // contiene secretos ni URLs de media: sólo capacidades verificables.
+        const piDevices = devices.filter((device) => String(device.tipo || "").toLowerCase().includes("ligronpi"));
+        const nativeDevices = devices.filter((device) => String(device.tipo || "").toLowerCase().includes("ligronair"));
+        const routePlans = [];
+        const relay = relayConfiguration(env);
+        for (const pi of piDevices) {
+            for (const native of nativeDevices) {
+                routePlans.push({
+                    pi_uuid: pi.uuid,
+                    native_uuid: native.uuid,
+                    ...publicRoutePlan(buildRoutePlan({
+                        pi,
+                        native,
+                        piNetwork: pi.network_status || {},
+                        nativeNetwork: native.network_status || {},
+                        relay
+                    }))
+                });
+            }
+        }
+
         // --------------------------------------------------
         // Respuesta
         // --------------------------------------------------
@@ -287,7 +314,8 @@ export async function devicesGet(request, env) {
 
                 success: true,
 
-                devices
+                devices,
+                route_plans: routePlans
 
             },
 
