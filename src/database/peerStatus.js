@@ -22,7 +22,26 @@ export async function findLinkedPiStatuses(db, userId, nativeUuid) {
         ORDER BY s.source_id
     `;
     try {
-        return (await db.prepare(reservedSql).bind(userId, nativeUuid).all()).results;
+        const rows = (await db.prepare(reservedSql).bind(userId, nativeUuid).all()).results;
+        // La cola puede no existir durante una actualización escalonada. El
+        // estado de vídeo y la reserva no deben caerse por ese detalle.
+        try {
+            await Promise.all(rows.map(async (row) => {
+                const command = await db.prepare(`
+                    SELECT command, state, result_message, completed_at
+                    FROM device_remote_commands
+                    WHERE usuario_id=?1 AND sender_device_uuid=?2
+                      AND target_device_uuid=?3 AND state IN ('COMPLETED','FAILED')
+                    ORDER BY completed_at DESC LIMIT 1
+                `).bind(userId, nativeUuid, row.device_uuid).first();
+                if (command) row.remote_command = command;
+            }));
+        } catch (error) {
+            if (!String(error?.message || error).toLowerCase().includes("no such table: device_remote_commands")) {
+                throw error;
+            }
+        }
+        return rows;
     } catch (error) {
         // Compatibilidad con instalaciones que todavía no han creado la
         // tabla de telemetría: la reserva y la presencia siguen siendo datos

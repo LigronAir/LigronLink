@@ -23,6 +23,7 @@ import { rendezvousPoll, rendezvousReady, rendezvousResult } from "./api/rendezv
 import { connectionRequest, connectionPoll, connectionClaim, connectionStatus, connectionActivate, connectionReady, connectionCancel } from "./api/connectionRequests.js";
 import { ligronTailBootstrap } from "./api/ligronTailBootstrap.js";
 import { ligronRelayAuth } from "./api/ligronRelay.js";
+import { deviceCommands, deviceCommandResult } from "./api/deviceCommands.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -194,6 +195,23 @@ export default {
 
             return await deviceStatus(request, env);
 
+        }
+
+        // Control remoto autenticado Native -> Link -> Pi. Link sólo
+        // almacena órdenes efímeras; la Pi las consulta desde dentro de su
+        // propia conexión HTTPS, sin puertos entrantes.
+        if (
+            (request.method === "POST" || request.method === "GET") &&
+            url.pathname === "/api/v1/device/commands"
+        ) {
+            return await deviceCommands(request, env);
+        }
+
+        if (
+            request.method === "POST" &&
+            url.pathname === "/api/v1/device/commands/result"
+        ) {
+            return await deviceCommandResult(request, env);
         }
 
         // ==================================================
