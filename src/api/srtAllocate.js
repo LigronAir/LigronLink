@@ -3,7 +3,7 @@
 // API - Asignación automática de receptor SRT
 // ==========================================================
 
-import { findDeviceByUuid } from "../database/devices.js";
+import { findDeviceByUuid, touchDevicePresence } from "../database/devices.js";
 import { allocateSrtDestination, releaseSrtDestination } from "../database/srtDestinations.js";
 import { findUserByEmail } from "../database/users.js";
 import { createRelaySession, relayConfiguration } from "./ligronRelay.js";
@@ -139,6 +139,12 @@ export async function srtAllocate(request, env) {
             );
 
         }
+
+        // La petición de reserva procede de la propia Pi autenticada: es una
+        // prueba de presencia más reciente que cualquier heartbeat anterior.
+        // Actualizarla antes de reservar evita que el snapshot de Native
+        // libere una asociación recién creada por parecer caducada.
+        await touchDevicePresence(env.DB, piUuid, usuario.id);
 
         // ### FIX
         // El receptor Native debe existir, estar ONLINE y pertenecer al usuario.

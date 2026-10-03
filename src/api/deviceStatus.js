@@ -21,6 +21,7 @@ const corsHeaders = {
 const VALID_STATES = [
     "OFFLINE",
     "MONITOR",
+    "PREPARING",
     "CONNECTING",
     "RECONNECTING",
     "EMITTING",
