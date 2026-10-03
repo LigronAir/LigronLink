@@ -196,25 +196,14 @@ export async function srtAllocate(request, env) {
             nativeNetwork,
             relay
         });
-        const selectedRoute = routePlan.selected;
+        let selectedRoute = routePlan.selected;
 
-        // LigronRelay es la vía principal: Pi y Native realizan ambas una
-        // llamada saliente autenticada al relay. Por ello funciona incluso
-        // detrás de CGNAT y evita entregar tráfico UDP entrante a Native
-        // cuando una VPN de escritorio lo filtra. LigronTail/LAN permanecen
-        // como reserva automática si el relay aún no está desplegado.
-        if (!selectedRoute) {
-            return Response.json(
-                {
-                    success: false,
-                    error: "No hay una ruta de media comprobada hacia Native.",
-                    route_plan: publicRoutePlan(routePlan)
-                },
-                { status: 409, headers: corsHeaders }
-            );
-        }
-
-        // Sólo después de validar la ruta reservamos el listener real.
+        // Primero reservamos una caja real para poder evaluar su endpoint
+        // publicado. El host de esa caja procede exclusivamente de Native y
+        // fue validado al publicar el snapshot; no se infiere de la IP HTTP.
+        // Esto conserva DIRECT/Tailscale/LAN como preferidos, pero evita que
+        // una instalación sin relay quede bloqueada antes de probar el SRT
+        // directo que ya venía funcionando.
         const assignment = await allocateSrtDestination(
             env.DB,
             usuario.id,
@@ -233,6 +222,38 @@ export async function srtAllocate(request, env) {
             await releaseSrtDestination(env.DB, usuario.id, piUuid, deviceUuid);
             return Response.json(
                 { success: false, error: "LigronAir publicó una caja sin puerto SRT utilizable." },
+                { status: 409, headers: corsHeaders }
+            );
+        }
+
+        const publishedEndpoint = String(assignment.host || "").trim();
+        let effectiveRoutePlan = routePlan;
+        if (!selectedRoute && publishedEndpoint) {
+            selectedRoute = {
+                id: "NATIVE_PUBLISHED_DIRECT",
+                label: "SRT directo publicado por Native",
+                state: "READY",
+                selectable: true,
+                reason: `Native publicó ${publishedEndpoint}:${assignment.port}; se probará como caller directo.`
+            };
+            effectiveRoutePlan = {
+                ...routePlan,
+                selected: selectedRoute,
+                candidates: [...routePlan.candidates, selectedRoute]
+            };
+        }
+
+        // LigronRelay sigue siendo la vía principal cuando está desplegado.
+        // Si no lo está, la ausencia de Tailscale/LAN no impide probar el
+        // endpoint SRT que el Native ya ha publicado y mantiene escuchando.
+        if (!selectedRoute) {
+            await releaseSrtDestination(env.DB, usuario.id, piUuid, deviceUuid);
+            return Response.json(
+                {
+                    success: false,
+                    error: "Native no publicó un endpoint SRT directo y no hay una ruta privada/relay disponible.",
+                    route_plan: publicRoutePlan(routePlan)
+                },
                 { status: 409, headers: corsHeaders }
             );
         }
@@ -263,7 +284,7 @@ export async function srtAllocate(request, env) {
                             receiver_name: assignment.nombre,
                             port: relay.port,
                             native_port: assignment.port,
-                            route_plan: publicRoutePlan(routePlan)
+                            route_plan: publicRoutePlan(effectiveRoutePlan)
                         }
                     },
                     { headers: corsHeaders }
@@ -276,7 +297,9 @@ export async function srtAllocate(request, env) {
 
         const host = selectedRoute.id === "TAILSCALE_DIRECT_CALLER"
             ? String(nativeNetwork.tailscale_ipv4_address || "").trim()
-            : String(nativeNetwork.ipv4_address || "").trim();
+            : selectedRoute.id === "LAN_DIRECT_CALLER"
+                ? String(nativeNetwork.ipv4_address || "").trim()
+                : publishedEndpoint;
 
         return Response.json(
             {
@@ -289,7 +312,7 @@ export async function srtAllocate(request, env) {
                     source_id: assignment.source_id,
                     receiver_name: assignment.nombre,
                     port: assignment.port,
-                    route_plan: publicRoutePlan(routePlan)
+                    route_plan: publicRoutePlan(effectiveRoutePlan)
                 }
             },
             {
