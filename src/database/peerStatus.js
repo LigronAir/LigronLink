@@ -6,7 +6,7 @@ export async function findLinkedPiStatuses(db, userId, nativeUuid) {
     // ausencia no debe ocultar al Native que una Pi le ha pedido una caja.
     const reservedSql = `
         SELECT p.uuid AS device_uuid, p.alias, p.public_ip,
-               r.runtime_state, r.streaming, r.target_srt_url,
+               r.runtime_state, r.streaming, r.target_srt_url, r.telemetry_json,
                r.ultima_actualizacion,
                s.source_id, s.nombre AS receiver_name,
                s.estado AS reservation_state, s.host, s.port, s.mode,

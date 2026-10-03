@@ -10,7 +10,7 @@ const corsHeaders = {
 // Primera fase segura. Reiniciar sistema, actualizar paquetes o cambiar una
 // Wi-Fi (que exigiría transportar una contraseña) no entran en esta cola.
 const ALLOWED_COMMANDS = new Set([
-    "stream_start", "stream_stop", "pipeline_restart", "wifi_scan", "status_refresh"
+    "stream_start", "stream_stop", "pipeline_restart", "wifi_scan", "status_refresh", "bond_set"
 ]);
 
 function response(payload, status = 200) {
@@ -42,6 +42,14 @@ export async function deviceCommands(request, env) {
             if (!targetUuid || !ALLOWED_COMMANDS.has(command)) {
                 return response({ success: false, error: "Orden remota no permitida." }, 400);
             }
+            const payload = body.payload && typeof body.payload === "object" && !Array.isArray(body.payload)
+                ? body.payload : {};
+            if (command === "bond_set" && (
+                !/^[A-Za-z0-9_.:-]{1,64}$/.test(String(payload.interface_key || "")) ||
+                typeof payload.enabled !== "boolean"
+            )) {
+                return response({ success: false, error: "Cambio de bonding inválido." }, 400);
+            }
 
             const target = await findDeviceByUuid(env.DB, targetUuid);
             if (!target || Number(target.usuario_id) !== Number(sender.user.id)) {
@@ -62,9 +70,9 @@ export async function deviceCommands(request, env) {
             const id = crypto.randomUUID();
             await env.DB.prepare(`
                 INSERT INTO device_remote_commands
-                    (id, usuario_id, sender_device_uuid, target_device_uuid, command, expires_at)
-                VALUES (?1, ?2, ?3, ?4, ?5, datetime('now','+90 seconds'))
-            `).bind(id, sender.user.id, sender.uuid, targetUuid, command).run();
+                    (id, usuario_id, sender_device_uuid, target_device_uuid, command, payload_json, expires_at)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now','+90 seconds'))
+            `).bind(id, sender.user.id, sender.uuid, targetUuid, command, JSON.stringify(payload)).run();
             return response({ success: true, command_id: id, state: "PENDING" });
         }
 
@@ -73,7 +81,7 @@ export async function deviceCommands(request, env) {
             const receiver = await ownedDevice(env, url.searchParams.get("email"), url.searchParams.get("device_uuid"));
             if (receiver.error) return response({ success: false, error: receiver.error }, receiver.status);
             const rows = await env.DB.prepare(`
-                SELECT id, command, created_at FROM device_remote_commands
+                SELECT id, command, payload_json, created_at FROM device_remote_commands
                 WHERE usuario_id=?1 AND target_device_uuid=?2 AND state='PENDING'
                   AND datetime(expires_at) > datetime('now')
                 ORDER BY created_at ASC LIMIT 4

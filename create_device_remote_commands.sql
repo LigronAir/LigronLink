@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS device_remote_commands (
     sender_device_uuid TEXT NOT NULL,
     target_device_uuid TEXT NOT NULL,
     command TEXT NOT NULL,
+    payload_json TEXT NOT NULL DEFAULT '{}',
     state TEXT NOT NULL DEFAULT 'PENDING',
     result_message TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
