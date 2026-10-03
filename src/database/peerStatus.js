@@ -22,7 +22,23 @@ export async function findLinkedPiStatuses(db, userId, nativeUuid) {
         ORDER BY s.source_id
     `;
     try {
-        const rows = (await db.prepare(reservedSql).bind(userId, nativeUuid).all()).results;
+        let rows;
+        try {
+            rows = (await db.prepare(reservedSql).bind(userId, nativeUuid).all()).results;
+        } catch (error) {
+            // Una base anterior puede tener la tabla runtime sin la columna
+            // de telemetría. La asociación Pi-caja sigue siendo válida: se
+            // conserva la reserva y se entrega telemetría vacía hasta que la
+            // migración aditiva se haya aplicado.
+            if (!String(error?.message || error).toLowerCase().includes("telemetry_json")) {
+                throw error;
+            }
+            const legacyTelemetrySql = reservedSql.replace(
+                "r.runtime_state, r.streaming, r.target_srt_url, r.telemetry_json,\n               r.ultima_actualizacion,",
+                "r.runtime_state, r.streaming, r.target_srt_url, NULL AS telemetry_json,\n               r.ultima_actualizacion,"
+            );
+            rows = (await db.prepare(legacyTelemetrySql).bind(userId, nativeUuid).all()).results;
+        }
         // La cola puede no existir durante una actualización escalonada. El
         // estado de vídeo y la reserva no deben caerse por ese detalle.
         try {
