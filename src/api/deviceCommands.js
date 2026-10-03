@@ -10,7 +10,7 @@ const corsHeaders = {
 // Primera fase segura. Reiniciar sistema, actualizar paquetes o cambiar una
 // Wi-Fi (que exigiría transportar una contraseña) no entran en esta cola.
 const ALLOWED_COMMANDS = new Set([
-    "stream_start", "stream_stop", "pipeline_restart", "wifi_scan", "status_refresh", "bond_set"
+    "stream_start", "stream_stop", "pipeline_restart", "wifi_scan", "status_refresh", "bond_set", "stream_tune"
 ]);
 
 function response(payload, status = 200) {
@@ -49,6 +49,12 @@ export async function deviceCommands(request, env) {
                 typeof payload.enabled !== "boolean"
             )) {
                 return response({ success: false, error: "Cambio de bonding inválido." }, 400);
+            }
+            if (command === "stream_tune" && (
+                !Number.isInteger(payload.bitrate_kbps) || payload.bitrate_kbps < 500 || payload.bitrate_kbps > 12000 ||
+                !Number.isInteger(payload.latency_ms) || payload.latency_ms < 50 || payload.latency_ms > 2000
+            )) {
+                return response({ success: false, error: "Bitrate o latencia fuera del rango operativo." }, 400);
             }
 
             const target = await findDeviceByUuid(env.DB, targetUuid);
