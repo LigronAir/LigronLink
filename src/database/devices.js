@@ -286,6 +286,17 @@ export async function updateDeviceRuntimeStatus(db, device, runtime, includeTele
                 audio_state = excluded.audio_state,
                 ${includeTelemetry ? "telemetry_json = excluded.telemetry_json," : ""}
                 ultima_actualizacion = datetime('now')
+            WHERE
+                device_runtime_status.runtime_state IS NOT excluded.runtime_state
+                OR device_runtime_status.source_label IS NOT excluded.source_label
+                OR device_runtime_status.target_device_uuid IS NOT excluded.target_device_uuid
+                OR device_runtime_status.target_label IS NOT excluded.target_label
+                OR device_runtime_status.target_srt_url IS NOT excluded.target_srt_url
+                OR device_runtime_status.streaming IS NOT excluded.streaming
+                OR device_runtime_status.pipeline_active IS NOT excluded.pipeline_active
+                OR device_runtime_status.signal_available IS NOT excluded.signal_available
+                OR device_runtime_status.audio_state IS NOT excluded.audio_state
+                OR datetime(device_runtime_status.ultima_actualizacion) < datetime('now', '-30 seconds')
             `
         )
         .bind(
