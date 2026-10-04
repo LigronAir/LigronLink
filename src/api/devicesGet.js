@@ -39,6 +39,53 @@ function isMissingNetworkCapabilitiesTable(error) {
         .includes("no such table: device_network_capabilities");
 }
 
+// La presencia tiene una ventana corta: los valores de runtime y las cajas
+// son fotografías persistidas, pero sólo son operativos si el equipo sigue
+// comunicándose con Link.
+const PRESENCE_WINDOW_MS = 75 * 1000;
+
+function parseD1Timestamp(value) {
+    if (!value) return Number.NaN;
+    const text = String(value).trim();
+    const normalized = text.includes("T")
+        ? text
+        : text.replace(" ", "T");
+    return Date.parse(/[zZ]|[+-]\d\d:\d\d$/.test(normalized)
+        ? normalized
+        : normalized + "Z");
+}
+
+function isDevicePresent(device, now = Date.now()) {
+    if (String(device?.estado || "").toUpperCase() !== "ONLINE") {
+        return false;
+    }
+    const lastSeen = parseD1Timestamp(device?.ultima_conexion);
+    return Number.isFinite(lastSeen) && now - lastSeen >= 0 &&
+        now - lastSeen <= PRESENCE_WINDOW_MS;
+}
+
+function summarizeReceivers(receivers, fallback) {
+    if (!Array.isArray(receivers) || receivers.length === 0) {
+        return fallback;
+    }
+    const totals = {
+        total: receivers.length,
+        free: 0,
+        busy: 0,
+        reserved: 0,
+        offline: 0,
+        last_update: fallback?.last_update || null
+    };
+    for (const receiver of receivers) {
+        const state = String(receiver.state || "OFFLINE").toUpperCase();
+        if (state === "FREE") totals.free += 1;
+        else if (state === "BUSY") totals.busy += 1;
+        else if (state === "RESERVED") totals.reserved += 1;
+        else totals.offline += 1;
+    }
+    return totals;
+}
+
 // ==========================================================
 // GET /api/v1/devices
 // ==========================================================
@@ -254,14 +301,41 @@ export async function devicesGet(request, env) {
                 ])
             );
 
+        const presenceNow = Date.now();
         const devices =
             devicesRaw.map((device) => {
+                const present = isDevicePresent(device, presenceNow);
+                const nativeDevice = String(device.tipo || "")
+                    .trim()
+                    .toLowerCase()
+                    .includes("ligronair");
+                const rawReceivers = receiversByDevice.get(device.uuid) || [];
+                // Una reserva persistida permite recuperar un reinicio breve,
+                // pero con Native sin presencia no es una caja reservada ni
+                // disponible desde el punto de vista operativo.
+                const receivers = nativeDevice && !present
+                    ? rawReceivers.map((receiver) => ({
+                        ...receiver,
+                        reported_state: receiver.state,
+                        inactive_reservation_by_alias:
+                            receiver.reserved_by_alias || "",
+                        state: "OFFLINE"
+                    }))
+                    : rawReceivers;
+                const rawSummary = srtByDevice.get(device.uuid) || {
+                    total: 0,
+                    free: 0,
+                    busy: 0,
+                    reserved: 0,
+                    offline: 0,
+                    last_update: null
+                };
                 const publishedNetwork = networkByDevice.get(device.uuid);
                 const networkStatus = publishedNetwork
                     ? {
                         ...publishedNetwork,
                         last_seen_at: device.ultima_conexion || null,
-                        sync_state: String(device.estado).toUpperCase() === "ONLINE"
+                        sync_state: present
                             ? "SYNCED" : "STALE"
                     }
                     : {
@@ -272,17 +346,13 @@ export async function devicesGet(request, env) {
                     };
                 return ({
                 ...device,
+                reported_state: String(device.estado || "OFFLINE").toUpperCase(),
+                estado: present ? "ONLINE" : "OFFLINE",
+                control_state: present ? "ONLINE" : "OFFLINE",
                 srt_receivers:
-                    srtByDevice.get(device.uuid) || {
-                        total: 0,
-                        free: 0,
-                        busy: 0,
-                        reserved: 0,
-                        offline: 0,
-                        last_update: null
-                    },
+                    summarizeReceivers(receivers, rawSummary),
                 srt_receiver_list:
-                    receiversByDevice.get(device.uuid) || [],
+                    receivers,
                 network_status: networkStatus,
                 runtime_status:
                     runtimeByDevice.get(device.uuid) || null
