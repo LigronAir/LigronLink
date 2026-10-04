@@ -232,21 +232,25 @@ export async function findSrtReceiversByUser(db, usuarioId) {
         .prepare(
             `
             SELECT
-                id,
-                equipo_uuid,
-                source_id,
-                nombre,
-                host,
-                port,
-                mode,
-                estado,
-                reservado_por_uuid,
-                ultima_actualizacion
-            FROM srt_destinos
-            WHERE usuario_id = ?1
+                s.id,
+                s.equipo_uuid,
+                s.source_id,
+                s.nombre,
+                s.host,
+                s.port,
+                s.mode,
+                s.estado,
+                s.reservado_por_uuid,
+                pi.alias AS reserved_by_alias,
+                s.ultima_actualizacion
+            FROM srt_destinos AS s
+            LEFT JOIN equipos AS pi
+                ON pi.uuid = s.reservado_por_uuid
+               AND pi.usuario_id = s.usuario_id
+            WHERE s.usuario_id = ?1
             ORDER BY
-                equipo_uuid ASC,
-                source_id ASC
+                s.equipo_uuid ASC,
+                s.source_id ASC
             `
         )
         .bind(usuarioId)

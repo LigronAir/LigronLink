@@ -152,6 +152,7 @@ export async function devicesGet(request, env) {
                 mode: receiver.mode,
                 state: receiver.estado,
                 reserved_by: receiver.reservado_por_uuid,
+                reserved_by_alias: receiver.reserved_by_alias || "",
                 last_update: receiver.ultima_actualizacion
             });
 
@@ -229,6 +230,9 @@ export async function devicesGet(request, env) {
                 tailscale_ipv4_address: String(capabilities.tailscale_ipv4_address || ""),
                 tailscale_tailnet: String(capabilities.tailscale_tailnet || ""),
                 tailscale_state: String(capabilities.tailscale_state || "UNKNOWN").toUpperCase(),
+                hardware_model: String(capabilities.hardware_model || ""),
+                hardware_memory_gb: Number(capabilities.hardware_memory_gb || 0),
+                device_role: String(capabilities.device_role || "").toUpperCase(),
                 tailscale_provisioning_state: String(capabilities.tailscale_provisioning_state || "").toUpperCase(),
                 tailscale_provisioning_error: String(capabilities.tailscale_provisioning_error || ""),
                 updated_at: row.updated_at || null
