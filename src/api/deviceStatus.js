@@ -56,6 +56,80 @@ function compactTelemetry(value) {
     }
 }
 
+function parseSrtTarget(value) {
+    const raw = String(value || "").trim();
+    if (!/^srt:\/\//i.test(raw)) return null;
+    try {
+        const url = new URL(raw);
+        const host = String(url.hostname || "").trim().toLowerCase();
+        const port = Number(url.port || 0);
+        return host && Number.isInteger(port) && port > 0
+            ? { host, port }
+            : null;
+    } catch {
+        return null;
+    }
+}
+
+// Resuelve una salida SRT que apunta a una IP privada Tailnet contra el
+// Native y la caja publicados por esa misma cuenta. Se ejecuta sólo cuando
+// Pi aún no conoce UUID de destino: no es un sondeo periódico.
+async function resolveNativeTargetFromSrt(db, userId, targetUrl) {
+    const target = parseSrtTarget(targetUrl);
+    if (!target) return null;
+
+    const selectWithCapabilities = `
+        SELECT e.uuid AS device_uuid, e.alias AS device_alias,
+               s.source_id, s.nombre AS receiver_name
+        FROM equipos AS e
+        JOIN srt_destinos AS s
+          ON s.equipo_uuid=e.uuid AND s.usuario_id=e.usuario_id
+        LEFT JOIN device_network_capabilities AS c
+          ON c.device_uuid=e.uuid
+        WHERE e.usuario_id=?1
+          AND LOWER(TRIM(e.tipo)) IN ('ligronair','ligronair native','ligronair_native')
+          AND UPPER(e.estado)='ONLINE'
+          AND datetime(e.ultima_conexion)>=datetime('now','-75 seconds')
+          AND s.port=?2
+          AND s.estado IN ('FREE','BUSY','RESERVED')
+          AND (
+              LOWER(COALESCE(s.host,''))=?3
+              OR LOWER(COALESCE(e.public_ip,''))=?3
+              OR LOWER(COALESCE(json_extract(c.capabilities_json,'$.tailscale_ipv4_address'),''))=?3
+              OR LOWER(COALESCE(json_extract(c.capabilities_json,'$.ipv4_address'),''))=?3
+          )
+        ORDER BY s.source_id ASC
+        LIMIT 1
+    `;
+    try {
+        return await db.prepare(selectWithCapabilities)
+            .bind(userId, target.port, target.host).first();
+    } catch (error) {
+        if (!isMissingNetworkCapabilitiesTable(error)) throw error;
+        // Durante una migración parcial sólo se puede resolver por el
+        // endpoint publicado o la IP pública, nunca se adivina una relación.
+        return await db.prepare(`
+            SELECT e.uuid AS device_uuid, e.alias AS device_alias,
+                   s.source_id, s.nombre AS receiver_name
+            FROM equipos AS e
+            JOIN srt_destinos AS s
+              ON s.equipo_uuid=e.uuid AND s.usuario_id=e.usuario_id
+            WHERE e.usuario_id=?1
+              AND LOWER(TRIM(e.tipo)) IN ('ligronair','ligronair native','ligronair_native')
+              AND UPPER(e.estado)='ONLINE'
+              AND datetime(e.ultima_conexion)>=datetime('now','-75 seconds')
+              AND s.port=?2
+              AND s.estado IN ('FREE','BUSY','RESERVED')
+              AND (
+                  LOWER(COALESCE(s.host,''))=?3
+                  OR LOWER(COALESCE(e.public_ip,''))=?3
+              )
+            ORDER BY s.source_id ASC
+            LIMIT 1
+        `).bind(userId, target.port, target.host).first();
+    }
+}
+
 async function syncNetworkCapabilities(db, deviceUuid, capabilities) {
     if (!capabilities || typeof capabilities !== "object") return false;
     try {
@@ -187,6 +261,30 @@ export async function deviceStatus(request, env) {
 
         }
 
+        const requestedTargetUuid =
+            String(body.target_device_uuid || "").trim();
+        const requestedTargetUrl =
+            String(body.target_srt_url || "").trim();
+        const resolvingStates = new Set([
+            "CONNECTING",
+            "RECONNECTING",
+            "EMITTING"
+        ]);
+        const resolvedTarget = !requestedTargetUuid &&
+            resolvingStates.has(runtimeState)
+            ? await resolveNativeTargetFromSrt(
+                env.DB,
+                usuario.id,
+                requestedTargetUrl
+            )
+            : null;
+        const effectiveTargetUuid =
+            requestedTargetUuid ||
+            String(resolvedTarget?.device_uuid || "").trim();
+        const effectiveTargetLabel = resolvedTarget
+            ? `Native ${String(resolvedTarget.device_alias || "LigronAir").trim()} · Caja ${String(resolvedTarget.source_id).padStart(2, "0")}`
+            : String(body.target_label || "").trim();
+
         // OFFLINE is an explicit shutdown signal, not a heartbeat.  The
         // previous implementation touched presence even for OFFLINE, which
         // made a closed Pi appear alive for a new reservation.
@@ -215,9 +313,9 @@ export async function deviceStatus(request, env) {
                 {
                     runtime_state: runtimeState,
                     source_label: String(body.source_label || "").trim(),
-                    target_device_uuid: String(body.target_device_uuid || "").trim(),
-                    target_label: String(body.target_label || "").trim(),
-                    target_srt_url: String(body.target_srt_url || "").trim(),
+                    target_device_uuid: effectiveTargetUuid,
+                    target_label: effectiveTargetLabel,
+                    target_srt_url: requestedTargetUrl,
                     streaming: Boolean(body.streaming),
                     pipeline_active: Boolean(body.pipeline_active),
                     signal_available: Boolean(body.signal_available),
@@ -237,9 +335,9 @@ export async function deviceStatus(request, env) {
                     {
                         runtime_state: runtimeState,
                         source_label: String(body.source_label || "").trim(),
-                        target_device_uuid: String(body.target_device_uuid || "").trim(),
-                        target_label: String(body.target_label || "").trim(),
-                        target_srt_url: String(body.target_srt_url || "").trim(),
+                        target_device_uuid: effectiveTargetUuid,
+                        target_label: effectiveTargetLabel,
+                        target_srt_url: requestedTargetUrl,
                         streaming: Boolean(body.streaming),
                         pipeline_active: Boolean(body.pipeline_active),
                         signal_available: Boolean(body.signal_available),
@@ -264,10 +362,11 @@ export async function deviceStatus(request, env) {
                 runtime_status_available: runtimeStatusAvailable,
                 telemetry_status_available: telemetryStatusAvailable,
                 network_status_available: networkStatusAvailable,
+                resolved_target: resolvedTarget || null,
                 peer: await findTargetPresence(
                     env.DB,
                     usuario.id,
-                    String(body.target_device_uuid || "").trim(),
+                    effectiveTargetUuid,
                     device.uuid
                 )
             },

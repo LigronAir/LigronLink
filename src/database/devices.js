@@ -212,6 +212,11 @@ export async function touchDevicePresence(db, uuid, usuarioId) {
                 estado = 'ONLINE'
             WHERE uuid = ?1
               AND usuario_id = ?2
+              AND (
+                  UPPER(COALESCE(estado, 'OFFLINE')) != 'ONLINE'
+                  OR ultima_conexion IS NULL
+                  OR datetime(ultima_conexion) < datetime('now', '-30 seconds')
+              )
             `
         )
         .bind(uuid, usuarioId)

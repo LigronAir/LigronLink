@@ -62,12 +62,34 @@ export async function deviceCommands(request, env) {
                 return response({ success: false, error: "Pi remota no disponible para esta cuenta." }, 404);
             }
 
-            // El emisor debe estar reservado precisamente contra una caja de
-            // este Native: no basta con que ambos pertenezcan a la misma cuenta.
+            // El emisor debe estar ligado a este Native. Una reserva Link es
+            // una prueba válida; una sesión SRT activa resuelta contra la IP
+            // Tailnet y el puerto del Native también lo es. Así el remoto no
+            // se rompe cuando la llegada directa por Tailnet ya puso la caja
+            // BUSY antes de que exista una reserva persistida.
             const pair = await env.DB.prepare(`
-                SELECT 1 FROM srt_destinos
-                WHERE usuario_id=?1 AND equipo_uuid=?2 AND reservado_por_uuid=?3
-                  AND estado='RESERVED' LIMIT 1
+                SELECT 'RESERVATION' AS proof
+                WHERE EXISTS (
+                    SELECT 1 FROM srt_destinos
+                    WHERE usuario_id=?1 AND equipo_uuid=?2
+                      AND reservado_por_uuid=?3 AND estado='RESERVED'
+                )
+                UNION ALL
+                SELECT 'ACTIVE_TAIL_SESSION' AS proof
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM device_runtime_status AS r
+                    JOIN equipos AS pi
+                      ON pi.uuid=r.device_uuid AND pi.usuario_id=r.usuario_id
+                    WHERE r.usuario_id=?1
+                      AND r.device_uuid=?3
+                      AND r.target_device_uuid=?2
+                      AND r.streaming=1
+                      AND UPPER(pi.estado)='ONLINE'
+                      AND datetime(pi.ultima_conexion)>=datetime('now','-75 seconds')
+                      AND datetime(r.ultima_actualizacion)>=datetime('now','-75 seconds')
+                )
+                LIMIT 1
             `).bind(sender.user.id, sender.uuid, targetUuid).first();
             if (!pair) {
                 return response({ success: false, error: "La Pi no está asociada a una caja de este Native." }, 409);
