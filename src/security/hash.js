@@ -7,7 +7,9 @@
 const PBKDF2_PREFIX = "pbkdf2_sha256";
 // Se conserva aquí, junto al formato, para poder aumentar el coste con una
 // migración explícita posterior sin dejar hashes ambiguos en D1.
-const PBKDF2_ITERATIONS = 310000;
+// Web Crypto en Cloudflare Workers limita PBKDF2 a 100.000 iteraciones.
+// Usar ese máximo conserva el endurecimiento sin bloquear login ni bootstrap.
+const PBKDF2_ITERATIONS = 100000;
 const SALT_BYTES = 16;
 const HASH_BITS = 256;
 const LEGACY_SHA256 = /^[a-f0-9]{64}$/i;
@@ -81,7 +83,7 @@ export async function verifyPassword(password, storedHash) {
     const iterations = Number(iterationsText);
     const salt = fromBase64(saltText || "");
     const expected = fromBase64(digestText || "");
-    if (prefix !== PBKDF2_PREFIX || !Number.isInteger(iterations) || iterations < 100000 || iterations > 2000000 || !salt || salt.length < SALT_BYTES || !expected || expected.length !== HASH_BITS / 8) {
+    if (prefix !== PBKDF2_PREFIX || !Number.isInteger(iterations) || iterations < 100000 || iterations > PBKDF2_ITERATIONS || !salt || salt.length < SALT_BYTES || !expected || expected.length !== HASH_BITS / 8) {
         return { valid: false, needsRehash: false };
     }
 
