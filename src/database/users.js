@@ -91,3 +91,17 @@ export async function findUserByEmail(db, email) {
         .first();
 
 }
+
+// Actualiza el hash únicamente tras una autenticación válida. No requiere
+// migración D1 porque reutiliza la columna password_hash existente.
+export async function updateUserPasswordHash(db, userId, passwordHash) {
+
+    await db.prepare(
+        `UPDATE usuarios
+         SET password_hash = ?2
+         WHERE id = ?1`
+    )
+    .bind(userId, passwordHash)
+    .run();
+
+}

@@ -7,8 +7,8 @@
 // válido, Link genera una única auth key etiquetada, de vida breve y de un
 // solo uso; Native la entrega al instalador elevado de LigronTail.
 
-import { hashPassword } from "../security/hash.js";
-import { findUserByEmail } from "../database/users.js";
+import { hashPassword, verifyPassword } from "../security/hash.js";
+import { findUserByEmail, updateUserPasswordHash } from "../database/users.js";
 import { findDeviceByUuid } from "../database/devices.js";
 
 const corsHeaders = {
@@ -67,12 +67,18 @@ export async function ligronTailBootstrap(request, env) {
         // del heartbeat, exige la contraseña recién introducida y no acepta
         // sólo email + UUID.
         const account = await findUserByEmail(env.DB, email);
-        if (!account || await hashPassword(password) !== account.password_hash) {
+        const verification = account
+            ? await verifyPassword(password, account.password_hash)
+            : { valid: false, needsRehash: false };
+        if (!verification.valid) {
             return response({
                 success: false,
                 code: "ACCOUNT_VALIDATION_FAILED",
                 error: "No se pudo validar la cuenta para activar LigronTail."
             }, 401);
+        }
+        if (verification.needsRehash) {
+            await updateUserPasswordHash(env.DB, account.id, await hashPassword(password));
         }
         const device = await findDeviceByUuid(env.DB, deviceUuid);
         if (!device || Number(device.usuario_id) !== Number(account.id)) {

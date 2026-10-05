@@ -4,8 +4,8 @@
 // Inicio de sesión
 // ==========================================================
 
-import { hashPassword } from "../security/hash.js";
-import { findUserByEmail } from "../database/users.js";
+import { hashPassword, verifyPassword } from "../security/hash.js";
+import { findUserByEmail, updateUserPasswordHash } from "../database/users.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -55,9 +55,9 @@ export async function login(request, env) {
 
         }
 
-        const passwordHash = await hashPassword(password);
+        const verification = await verifyPassword(password, user.password_hash);
 
-        if (passwordHash !== user.password_hash) {
+        if (!verification.valid) {
 
             return Response.json(
                 {
@@ -70,6 +70,12 @@ export async function login(request, env) {
                 }
             );
 
+        }
+
+        // Las cuentas SHA-256 heredadas se migran sólo después de que la
+        // contraseña haya sido validada. El cliente no cambia su contrato.
+        if (verification.needsRehash) {
+            await updateUserPasswordHash(env.DB, user.id, await hashPassword(password));
         }
 
         return Response.json(

@@ -18,13 +18,7 @@ export async function register(request, env) {
 
     try {
 
-        console.log("======================================");
-        console.log("LigronLink - Nuevo registro");
-        console.log("======================================");
-
         const body = await request.json();
-
-        console.log("Datos recibidos:", body);
 
         const nombre = body.nombre?.trim();
 
@@ -33,8 +27,6 @@ export async function register(request, env) {
         const password = body.password;
 
         if (!nombre || !email || !password) {
-
-            console.log("ERROR: Faltan datos obligatorios.");
 
             return Response.json(
                 {
@@ -49,25 +41,9 @@ export async function register(request, env) {
 
         }
 
-        console.log("Datos validados correctamente.");
-
-        console.log("Generando UUID...");
-
         const uuid = generateUserUUID();
 
-        console.log("UUID:", uuid);
-
-        console.log("Generando hash de contraseña...");
-
         const passwordHash = await hashPassword(password);
-
-        console.log("Hash generado correctamente.");
-
-        console.log("Comprobando acceso a D1...");
-
-        console.log("env.DB =", env.DB);
-
-        console.log("Insertando usuario...");
 
         await createUser(env.DB, {
 
@@ -81,7 +57,7 @@ export async function register(request, env) {
 
         });
 
-        console.log("Usuario insertado correctamente.");
+        console.info("LigronLink: cuenta creada.");
 
         return Response.json(
             {
