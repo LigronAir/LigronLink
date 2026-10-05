@@ -357,6 +357,32 @@ export async function findAvailableSrtDestinations(db, usuarioId) {
 
 export async function allocateSrtDestination(db, usuarioId, piUuid, deviceUuid, sourceId = null) {
 
+    // Pool reserva primero la vía y después ordena a la Pi que la prepare.
+    // Cuando la Pi recibe la orden, su llamada normal a /srt/allocate debe
+    // recuperar *esa misma* reserva, no buscar una caja libre distinta ni
+    // tratar la operación como un fallo. Esta comprobación es idempotente y
+    // no concede acceso a reservas de otra Pi.
+    if (sourceId !== null) {
+        const existing = await db.prepare(`
+            SELECT
+                s.id, s.equipo_uuid, s.source_id, s.nombre, s.host, s.port,
+                s.mode, s.estado, s.reservado_por_uuid
+            FROM srt_destinos AS s
+            INNER JOIN equipos AS e ON e.uuid = s.equipo_uuid
+            WHERE s.usuario_id = ?1
+              AND s.equipo_uuid = ?3
+              AND s.source_id = ?4
+              AND s.estado = 'RESERVED'
+              AND s.reservado_por_uuid = ?2
+              AND e.usuario_id = ?1
+              AND UPPER(e.estado) = 'ONLINE'
+              AND datetime(e.ultima_conexion) >= datetime('now', '-75 seconds')
+              AND s.port BETWEEN 1 AND 65535
+            LIMIT 1
+        `).bind(usuarioId, piUuid, deviceUuid, sourceId).first();
+        if (existing) return existing;
+    }
+
     const resultado = await db
         .prepare(
             `

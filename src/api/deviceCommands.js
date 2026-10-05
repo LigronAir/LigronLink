@@ -1,5 +1,6 @@
 import { findUserByEmail } from "../database/users.js";
 import { findDeviceByUuid } from "../database/devices.js";
+import { advancePoolSwitch } from "./poolClaim.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -10,7 +11,7 @@ const corsHeaders = {
 // Primera fase segura. Reiniciar sistema, actualizar paquetes o cambiar una
 // Wi-Fi (que exigiría transportar una contraseña) no entran en esta cola.
 const ALLOWED_COMMANDS = new Set([
-    "stream_start", "stream_stop", "pipeline_restart", "wifi_scan", "status_refresh", "bond_set", "stream_tune"
+    "stream_start", "stream_stop", "pipeline_restart", "wifi_scan", "status_refresh", "bond_set", "stream_tune", "pool_claim"
 ]);
 
 function response(payload, status = 200) {
@@ -140,7 +141,14 @@ export async function deviceCommandResult(request, env) {
             SET state=?1, result_message=?2, completed_at=datetime('now')
             WHERE id=?3 AND usuario_id=?4 AND target_device_uuid=?5 AND state='PENDING'
         `).bind(state, result, id, receiver.user.id, receiver.uuid).run();
-        return response({ success: true, updated: Number(updated.meta?.changes || 0) > 0 });
+        const changed = Number(updated.meta?.changes || 0) > 0;
+        // Sólo un ACK válido hace avanzar una transición Pool. El resultado
+        // llega por la misma conexión HTTPS saliente de la Pi, sin abrir
+        // puertos ni añadir consultas de polling al dashboard.
+        if (changed) {
+            await advancePoolSwitch(env, receiver.user.id, id, state, result);
+        }
+        return response({ success: true, updated: changed });
     } catch (error) {
         return response({ success: false, error: String(error?.message || error) }, 500);
     }

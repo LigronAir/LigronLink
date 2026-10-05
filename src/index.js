@@ -24,6 +24,7 @@ import { connectionRequest, connectionPoll, connectionClaim, connectionStatus, c
 import { ligronTailBootstrap } from "./api/ligronTailBootstrap.js";
 import { ligronRelayAuth } from "./api/ligronRelay.js";
 import { deviceCommands, deviceCommandResult } from "./api/deviceCommands.js";
+import { poolClaim } from "./api/poolClaim.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -212,6 +213,12 @@ export default {
             url.pathname === "/api/v1/device/commands/result"
         ) {
             return await deviceCommandResult(request, env);
+        }
+
+        // Pool sólo solicita una reclamación; Link ejecuta la transición por
+        // reserva + órdenes confirmadas a las Pi, nunca desde el navegador.
+        if (request.method === "POST" && url.pathname === "/api/v1/pool/claim") {
+            return await poolClaim(request, env);
         }
 
         // ==================================================
