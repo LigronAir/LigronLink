@@ -28,6 +28,48 @@ const VALID_STATES = [
     "ERROR"
 ];
 
+// Los Native antiguos enviaban este mismo heartbeat de red cada 5 s, además
+// del snapshot de receptores. Se coalescen en el borde 20 s; Pi nunca entra
+// aquí porque su estado/telemetría forma parte del control operativo.
+const NATIVE_HEARTBEAT_DEDUP_MS = 20 * 1000;
+const nativeHeartbeatCache = new Map();
+
+function nativeHeartbeatKey(body, email, uuid) {
+    const state = String(body.runtime_state || body.state || "").trim().toUpperCase();
+    const source = String(body.source_label || "").trim().toLowerCase();
+    const target = String(body.target_device_uuid || "").trim();
+    if (state !== "MONITOR" || !source.includes("ligronair native") || target) {
+        return "";
+    }
+    try {
+        return `${email}:${uuid}:${JSON.stringify(body.network_capabilities || {})}`;
+    } catch {
+        return "";
+    }
+}
+
+function cachedNativeHeartbeat(key) {
+    if (!key) return null;
+    const entry = nativeHeartbeatCache.get(key);
+    if (!entry || entry.expiresAt <= Date.now()) {
+        if (entry) nativeHeartbeatCache.delete(key);
+        return null;
+    }
+    return entry.payload;
+}
+
+function cacheNativeHeartbeat(key, payload) {
+    if (!key) return;
+    nativeHeartbeatCache.set(key, {
+        payload,
+        expiresAt: Date.now() + NATIVE_HEARTBEAT_DEDUP_MS
+    });
+    if (nativeHeartbeatCache.size > 128) {
+        const oldest = nativeHeartbeatCache.keys().next().value;
+        if (oldest) nativeHeartbeatCache.delete(oldest);
+    }
+}
+
 function isMissingRuntimeStatusTable(error) {
 
     return String(error?.message || error)
@@ -199,6 +241,15 @@ export async function deviceStatus(request, env) {
 
         }
 
+        const heartbeatKey = nativeHeartbeatKey(body, email, uuid);
+        const cachedHeartbeat = cachedNativeHeartbeat(heartbeatKey);
+        if (cachedHeartbeat) {
+            return Response.json(
+                { ...cachedHeartbeat, heartbeat_cached: true },
+                { headers: corsHeaders }
+            );
+        }
+
         const usuario =
             await findUserByEmail(
                 env.DB,
@@ -356,8 +407,7 @@ export async function deviceStatus(request, env) {
 
         }
 
-        return Response.json(
-            {
+        const responsePayload = {
                 success: true,
                 runtime_status_available: runtimeStatusAvailable,
                 telemetry_status_available: telemetryStatusAvailable,
@@ -369,11 +419,9 @@ export async function deviceStatus(request, env) {
                     effectiveTargetUuid,
                     device.uuid
                 )
-            },
-            {
-                headers: corsHeaders
-            }
-        );
+            };
+        cacheNativeHeartbeat(heartbeatKey, responsePayload);
+        return Response.json(responsePayload, { headers: corsHeaders });
 
     }
     catch (error) {

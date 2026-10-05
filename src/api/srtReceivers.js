@@ -21,6 +21,48 @@ const corsHeaders = {
     "Access-Control-Allow-Headers": "Content-Type"
 };
 
+// Protección de borde para binarios anteriores que todavía publican el
+// mismo snapshot cada 5 s. No sustituye a la presencia persistida: sólo
+// devuelve durante 20 s la última respuesta idéntica de este isolate. Así
+// una tormenta de heartbeats no llega a D1 y un cambio real de caja, red o
+// estado (firma distinta) pasa inmediatamente.
+const HEARTBEAT_DEDUP_MS = 20 * 1000;
+const receiverHeartbeatCache = new Map();
+
+function heartbeatSignature(receivers, capabilities) {
+    try {
+        return JSON.stringify({ receivers, capabilities: capabilities || null });
+    } catch {
+        return "";
+    }
+}
+
+function cachedReceiverHeartbeat(email, deviceUuid, signature) {
+    if (!signature) return null;
+    const key = `${email}:${deviceUuid}`;
+    const entry = receiverHeartbeatCache.get(key);
+    if (!entry || entry.expiresAt <= Date.now() || entry.signature !== signature) {
+        if (entry && entry.expiresAt <= Date.now()) receiverHeartbeatCache.delete(key);
+        return null;
+    }
+    return entry.payload;
+}
+
+function cacheReceiverHeartbeat(email, deviceUuid, signature, payload) {
+    if (!signature) return;
+    const key = `${email}:${deviceUuid}`;
+    receiverHeartbeatCache.set(key, {
+        signature,
+        payload,
+        expiresAt: Date.now() + HEARTBEAT_DEDUP_MS
+    });
+    // El Worker no necesita conservar un historial de equipos en memoria.
+    if (receiverHeartbeatCache.size > 128) {
+        const oldest = receiverHeartbeatCache.keys().next().value;
+        if (oldest) receiverHeartbeatCache.delete(oldest);
+    }
+}
+
 async function syncNetworkCapabilities(db, deviceUuid, capabilities) {
     if (!capabilities || typeof capabilities !== "object") return false;
     try {
@@ -140,6 +182,22 @@ export async function srtReceivers(request, env) {
                 }
             );
 
+        }
+
+        const heartbeatSnapshot = heartbeatSignature(
+            receivers,
+            networkCapabilities
+        );
+        const cachedHeartbeat = cachedReceiverHeartbeat(
+            email,
+            deviceUuid,
+            heartbeatSnapshot
+        );
+        if (cachedHeartbeat) {
+            return Response.json(
+                { ...cachedHeartbeat, heartbeat_cached: true },
+                { headers: corsHeaders }
+            );
         }
 
         // --------------------------------------------------
@@ -465,8 +523,7 @@ export async function srtReceivers(request, env) {
         // OK
         // --------------------------------------------------
 
-        return Response.json(
-            {
+        const responsePayload = {
                 success: true,
                 device_uuid: device.uuid,
                 device_alias: device.alias,
@@ -498,11 +555,14 @@ export async function srtReceivers(request, env) {
                     device.uuid,
                     relayConfiguration(env),
                 )
-            },
-            {
-                headers: corsHeaders
-            }
+            };
+        cacheReceiverHeartbeat(
+            email,
+            deviceUuid,
+            heartbeatSnapshot,
+            responsePayload
         );
+        return Response.json(responsePayload, { headers: corsHeaders });
 
     }
     catch (error) {
