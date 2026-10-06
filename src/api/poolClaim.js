@@ -6,14 +6,14 @@
 // conserva la reserva y entrega órdenes que la Pi recoge desde su HTTPS.
 // ==========================================================
 
-import { findUserByEmail } from "../database/users.js";
 import { findDeviceByUuid } from "../database/devices.js";
 import { allocateSrtDestination } from "../database/srtDestinations.js";
+import { requireUserSession } from "../security/sessions.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type"
+    "Access-Control-Allow-Headers": "Content-Type, Authorization"
 };
 
 const PI_TYPES = new Set(["ligronpi", "ligronpi native", "ligronpi_native"]);
@@ -158,17 +158,16 @@ export async function poolClaim(request, env) {
         }
 
         const body = await request.json();
-        const email = String(body.email || "").trim().toLowerCase();
         const piUuid = String(body.pi_uuid || "").trim();
         const nativeUuid = String(body.native_uuid || "").trim();
         const sourceId = Number(body.source_id);
         const replace = body.replace === true;
-        if (!email || !piUuid || !nativeUuid || !Number.isInteger(sourceId) || sourceId < 1 || sourceId > 50) {
+        if (!piUuid || !nativeUuid || !Number.isInteger(sourceId) || sourceId < 1 || sourceId > 50) {
             return response({ success: false, error: "Solicitud Pool inválida." }, 400);
         }
 
-        const user = await findUserByEmail(env.DB, email);
-        if (!user) return response({ success: false, error: "Usuario no encontrado." }, 404);
+        const user = await requireUserSession(request, env.DB);
+        if (!user) return response({ success: false, error: "Sesión no válida o caducada. Inicie sesión de nuevo." }, 401);
         const [pi, native] = await Promise.all([
             findDeviceByUuid(env.DB, piUuid),
             findDeviceByUuid(env.DB, nativeUuid)

@@ -6,6 +6,7 @@
 
 import { register } from "./api/register.js";
 import { login } from "./api/login.js";
+import { logout } from "./api/logout.js";
 import { deviceRegister } from "./api/deviceRegister.js";
 import { devicesGet } from "./api/devicesGet.js";
 // ### FIX
@@ -30,7 +31,7 @@ const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
     // ### FIX
     "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type"
+    "Access-Control-Allow-Headers": "Content-Type, Authorization"
 };
 
 export default {
@@ -111,6 +112,15 @@ export default {
         ) {
 
             return await login(request, env);
+
+        }
+
+        if (
+            request.method === "POST" &&
+            url.pathname === "/api/v1/logout"
+        ) {
+
+            return await logout(request, env);
 
         }
 

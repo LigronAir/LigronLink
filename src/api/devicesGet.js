@@ -9,7 +9,7 @@ import {
 } from "../database/devices.js";
 
 // ### FIX
-import { findUserByEmail } from "../database/users.js";
+import { requireUserSession } from "../security/sessions.js";
 import { buildRoutePlan, publicRoutePlan } from "./routePlanner.js";
 import { relayConfiguration } from "./ligronRelay.js";
 
@@ -22,7 +22,7 @@ import {
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
     "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type"
+    "Access-Control-Allow-Headers": "Content-Type, Authorization"
 };
 
 function isMissingRuntimeStatusTable(error) {
@@ -94,54 +94,17 @@ export async function devicesGet(request, env) {
 
     try {
 
-        // --------------------------------------------------
-        // ### FIX
-        // Obtener email desde la URL
-        // --------------------------------------------------
-
-        const url = new URL(request.url);
-
-        const email =
-            url.searchParams
-                .get("email")
-                ?.trim()
-                .toLowerCase();
-
-        if (!email) {
-
-            return Response.json(
-                {
-                    success: false,
-                    error: "Debe indicar el correo."
-                },
-                {
-                    status: 400,
-                    headers: corsHeaders
-                }
-            );
-
-        }
-
-        // --------------------------------------------------
-        // ### FIX
-        // Resolver usuario
-        // --------------------------------------------------
-
-        const usuario =
-            await findUserByEmail(
-                env.DB,
-                email
-            );
+        const usuario = await requireUserSession(request, env.DB);
 
         if (!usuario) {
 
             return Response.json(
                 {
                     success: false,
-                    error: "Usuario no encontrado."
+                    error: "Sesión no válida o caducada. Inicie sesión de nuevo."
                 },
                 {
-                    status: 404,
+                    status: 401,
                     headers: corsHeaders
                 }
             );

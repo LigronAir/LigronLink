@@ -6,6 +6,7 @@
 
 import { hashPassword, verifyPassword } from "../security/hash.js";
 import { findUserByEmail, updateUserPasswordHash } from "../database/users.js";
+import { createUserSession } from "../security/sessions.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -78,6 +79,8 @@ export async function login(request, env) {
             await updateUserPasswordHash(env.DB, user.id, await hashPassword(password));
         }
 
+        const session = await createUserSession(env.DB, user.id);
+
         return Response.json(
             {
                 success: true,
@@ -90,7 +93,10 @@ export async function login(request, env) {
 
                     email: user.email
 
-                }
+                },
+
+                access_token: session.token,
+                expires_in: session.expiresIn
 
             },
             {

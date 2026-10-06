@@ -4,12 +4,12 @@
 // ==========================================================
 
 import { deleteDevice } from "../database/devices.js";
-import { findUserByEmail } from "../database/users.js";
+import { requireUserSession } from "../security/sessions.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
     "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type"
+    "Access-Control-Allow-Headers": "Content-Type, Authorization"
 };
 
 // ==========================================================
@@ -31,12 +31,6 @@ export async function deviceDelete(request, env) {
 
         const deviceId =
             Number(partes[4]);
-
-        const email =
-            url.searchParams
-                .get("email")
-                ?.trim()
-                .toLowerCase();
 
         if (!deviceId) {
 
@@ -62,42 +56,7 @@ export async function deviceDelete(request, env) {
 
         }
 
-        if (!email) {
-
-            return Response.json(
-
-                {
-
-                    success: false,
-
-                    error: "Debe indicar el correo."
-
-                },
-
-                {
-
-                    status: 400,
-
-                    headers: corsHeaders
-
-                }
-
-            );
-
-        }
-
-        // --------------------------------------------------
-        // Resolver usuario
-        // --------------------------------------------------
-
-        const usuario =
-            await findUserByEmail(
-
-                env.DB,
-
-                email
-
-            );
+        const usuario = await requireUserSession(request, env.DB);
 
         if (!usuario) {
 
@@ -107,13 +66,13 @@ export async function deviceDelete(request, env) {
 
                     success: false,
 
-                    error: "Usuario no encontrado."
+                    error: "Sesión no válida o caducada. Inicie sesión de nuevo."
 
                 },
 
                 {
 
-                    status: 404,
+                    status: 401,
 
                     headers: corsHeaders
 
