@@ -25,6 +25,8 @@ import { connectionRequest, connectionPoll, connectionClaim, connectionStatus, c
 import { ligronTailBootstrap } from "./api/ligronTailBootstrap.js";
 import { ligronRelayAuth } from "./api/ligronRelay.js";
 import { deviceCommands, deviceCommandResult } from "./api/deviceCommands.js";
+import { deviceCredential } from "./api/deviceCredential.js";
+import { deviceBootstrap } from "./api/deviceBootstrap.js";
 import { poolClaim } from "./api/poolClaim.js";
 
 const corsHeaders = {
@@ -135,6 +137,22 @@ export default {
 
             return await deviceRegister(request, env);
 
+        }
+
+        // Credencial persistente de Pi: se emite sólo a una sesión web
+        // autenticada y se consume desde systemd, no desde settings.json.
+        if (
+            (request.method === "POST" || request.method === "DELETE") &&
+            url.pathname === "/api/v1/device/credential"
+        ) {
+            return await deviceCredential(request, env);
+        }
+
+        if (
+            request.method === "GET" &&
+            url.pathname === "/api/v1/device/bootstrap"
+        ) {
+            return await deviceBootstrap(request, env);
         }
 
         // ==================================================
