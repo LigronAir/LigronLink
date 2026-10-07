@@ -5,7 +5,7 @@
 
 // ### FIX
 import { findUserByEmail } from "../database/users.js";
-import { registerOrUpdateDevice } from "../database/devices.js";
+import { findDeviceByUuid, registerOrUpdateDevice } from "../database/devices.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -120,40 +120,63 @@ export async function deviceRegister(request, env) {
         // Usuario
         // --------------------------------------------------
 
-        let usuarioId = 1;
+        if (!email) {
 
-        // ### FIX
-        // Si Native envía email, se usa el usuario real.
-        // Si no llega email, se conserva el comportamiento
-        // provisional/manual existente.
-        if (email) {
+            return Response.json(
+                {
+                    success: false,
+                    error: "Debe iniciar sesión antes de registrar un equipo."
+                },
+                {
+                    status: 401,
+                    headers: corsHeaders
+                }
+            );
 
-            const usuario = await findUserByEmail(env.DB, email);
+        }
 
-            if (!usuario) {
+        const usuario = await findUserByEmail(env.DB, email);
 
-                return Response.json(
-                    {
-                        success: false,
-                        error: "No se pudo resolver el usuario autenticado."
-                    },
-                    {
-                        status: 401,
-                        headers: corsHeaders
-                    }
-                );
+        if (!usuario) {
 
-            }
+            return Response.json(
+                {
+                    success: false,
+                    error: "No se pudo resolver la cuenta del equipo."
+                },
+                {
+                    status: 401,
+                    headers: corsHeaders
+                }
+            );
 
-            usuarioId = usuario.id;
+        }
 
+        const usuarioId = usuario.id;
+        const existente = await findDeviceByUuid(env.DB, uuid);
+
+        // Un UUID ya conocido nunca cambia de cuenta por un registro. La
+        // compartición multiempresa se hará más adelante mediante membresías
+        // aprobadas, no reenviando email + UUID desde el cliente.
+        if (existente && Number(existente.usuario_id) !== Number(usuarioId)) {
+            return Response.json(
+                {
+                    success: false,
+                    code: "DEVICE_ACCOUNT_MEMBERSHIP_REQUIRED",
+                    error: "Este equipo pertenece a otra cuenta. Debe vincularse mediante una autorización aprobada."
+                },
+                {
+                    status: 409,
+                    headers: corsHeaders
+                }
+            );
         }
 
         // --------------------------------------------------
         // Registrar o actualizar equipo
         // --------------------------------------------------
 
-        const esNative = Boolean(email);
+        const esNative = true;
 
         const resultado = await registerOrUpdateDevice(
             env.DB,

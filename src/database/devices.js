@@ -128,23 +128,36 @@ export async function registerOrUpdateDevice(db, device) {
     // Existe -> actualizar
     // ------------------------------------------------------
 
+    const propietario = await db
+        .prepare(
+            `SELECT usuario_id
+             FROM equipos
+             WHERE uuid = ?1`
+        )
+        .bind(device.uuid)
+        .first();
+
+    if (Number(propietario?.usuario_id) !== Number(device.usuarioId)) {
+        throw new Error(
+            "No se permite reasignar un UUID existente a otra cuenta."
+        );
+    }
+
     await db
         .prepare(
             `
             UPDATE equipos
             SET
-                usuario_id = ?2,
-                tipo = ?3,
-                alias = ?4,
-                public_ip = COALESCE(?5, public_ip),
-                ultima_conexion = COALESCE(?6, ultima_conexion),
-                estado = ?7
+                tipo = ?2,
+                alias = ?3,
+                public_ip = COALESCE(?4, public_ip),
+                ultima_conexion = COALESCE(?5, ultima_conexion),
+                estado = ?6
             WHERE uuid = ?1
             `
         )
         .bind(
             device.uuid,
-            device.usuarioId,
             device.tipo,
             device.alias,
             device.publicIp || null,
