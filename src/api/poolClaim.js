@@ -84,6 +84,23 @@ async function receiverForUpdate(db, userId, nativeUuid, sourceId) {
     `).bind(userId, nativeUuid, sourceId).first();
 }
 
+// Una LigronPi sólo puede ocupar una vía Pool a la vez. Sin esta comprobación,
+// dos solicitudes concurrentes podrían dejar reservas persistentes en cajas
+// distintas aunque la Pi sólo llegase a obedecer la última orden recibida.
+async function otherReservationForPi(db, userId, piUuid, nativeUuid, sourceId) {
+    return db.prepare(`
+        SELECT s.equipo_uuid, s.source_id, s.nombre, native.alias AS native_alias
+        FROM srt_destinos AS s
+        LEFT JOIN equipos AS native
+          ON native.uuid=s.equipo_uuid AND native.usuario_id=s.usuario_id
+        WHERE s.usuario_id=?1
+          AND s.reservado_por_uuid=?2
+          AND s.estado='RESERVED'
+          AND NOT (s.equipo_uuid=?3 AND s.source_id=?4)
+        LIMIT 1
+    `).bind(userId, piUuid, nativeUuid, sourceId).first();
+}
+
 async function activeSwitchForReceiver(db, userId, nativeUuid, sourceId) {
     return db.prepare(`
         SELECT state FROM pool_switches
@@ -180,6 +197,18 @@ export async function poolClaim(request, env) {
         }
         if (!devicePresent(pi)) return response({ success: false, error: "La LigronPi no está presente en Link." }, 409);
         if (!devicePresent(native)) return response({ success: false, error: "El LigronAir Native no está presente en Link." }, 409);
+
+        const otherReservation = await otherReservationForPi(
+            env.DB, user.id, pi.uuid, native.uuid, sourceId
+        );
+        if (otherReservation) {
+            const assignedNative = otherReservation.native_alias || "otro LigronAir";
+            const assignedReceiver = otherReservation.nombre || `vía ${otherReservation.source_id}`;
+            return response({
+                success: false,
+                error: `${pi.alias || "La LigronPi"} ya está reservada en ${assignedNative} · ${assignedReceiver}. Libera o cambia esa asignación antes de reclamarla aquí.`
+            }, 409);
+        }
 
         const receiver = await receiverForUpdate(env.DB, user.id, native.uuid, sourceId);
         if (!receiver || !Number(receiver.port)) {
