@@ -1,11 +1,13 @@
 import { findUserByEmail } from "../database/users.js";
 import { findDeviceByUuid } from "../database/devices.js";
 import { advancePoolSwitch } from "./poolClaim.js";
+import { requireUserSession } from "../security/sessions.js";
+import { requireDeviceCredential } from "../security/deviceCredentials.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type"
+    "Access-Control-Allow-Headers": "Content-Type, Authorization"
 };
 
 // Primera fase segura. Reiniciar sistema, actualizar paquetes o cambiar una
@@ -31,12 +33,78 @@ async function ownedDevice(env, emailValue, uuidValue) {
     return { user, device, uuid };
 }
 
+// Durante la migración sólo se conserva ownedDevice para equipos aún no
+// provisionados. Las Pi ya provisionadas nunca derivan su identidad de un
+// correo enviado por el cliente: su secreto Device decide tanto el equipo
+// como la cuenta de la operación.
+async function credentialDevice(env, request, uuidValue) {
+    const uuid = String(uuidValue || "").trim();
+    if (!uuid) return { error: "Debe indicar el UUID de equipo.", status: 400 };
+    const credential = await requireDeviceCredential(request, env.DB, uuid);
+    if (!credential) return { error: "Credencial de equipo no válida.", status: 401 };
+    const device = await findDeviceByUuid(env.DB, uuid);
+    if (!device) return { error: "Equipo no encontrado.", status: 404 };
+    const user = await env.DB.prepare(`
+        SELECT id, email, nombre, estado FROM usuarios
+        WHERE id=?1 AND UPPER(COALESCE(estado, 'ACTIVO'))='ACTIVO'
+        LIMIT 1
+    `).bind(device.usuario_id).first();
+    if (!user) return { error: "La cuenta operativa del equipo no está disponible.", status: 403 };
+    return { user, device, uuid };
+}
+
+function hasDeviceAuthorization(request) {
+    return /^Device\s+/i.test(String(request.headers.get("Authorization") || ""));
+}
+
+function hasBearerAuthorization(request) {
+    return /^Bearer\s+/i.test(String(request.headers.get("Authorization") || ""));
+}
+
+async function authenticatedReceiver(env, request, emailValue, uuidValue) {
+    if (hasDeviceAuthorization(request)) {
+        return credentialDevice(env, request, uuidValue);
+    }
+    return ownedDevice(env, emailValue, uuidValue);
+}
+
+async function authenticatedNativeSender(env, request, body) {
+    const uuid = String(body.device_uuid || "").trim();
+    const user = await requireUserSession(request, env.DB);
+    if (user) {
+        const device = await findDeviceByUuid(env.DB, uuid);
+        if (!device || Number(device.usuario_id) !== Number(user.id)) {
+            return { error: "Native no encontrado para esta sesión.", status: 403 };
+        }
+        return { user, device, uuid };
+    }
+
+    // Una sesión que se presentó pero ya no vale no puede degradarse al
+    // protocolo heredado email+UUID. Así un token caducado o manipulado no
+    // modifica el significado de la autenticación de la petición.
+    if (hasBearerAuthorization(request)) {
+        return { error: "Sesión no válida o caducada. Inicie sesión de nuevo.", status: 401 };
+    }
+
+    // Compatibilidad acotada hasta que todos los Native tengan una identidad
+    // de equipo. No se elimina en este despliegue para no cortar operaciones.
+    return ownedDevice(env, body.email, uuid);
+}
+
+function isNative(device) {
+    return ["ligronair", "ligronair native", "ligronair_native"]
+        .includes(String(device?.tipo || "").trim().toLowerCase());
+}
+
 export async function deviceCommands(request, env) {
     try {
         if (request.method === "POST") {
             const body = await request.json();
-            const sender = await ownedDevice(env, body.email, body.device_uuid);
+            const sender = await authenticatedNativeSender(env, request, body);
             if (sender.error) return response({ success: false, error: sender.error }, sender.status);
+            if (!isNative(sender.device)) {
+                return response({ success: false, error: "Sólo un LigronAir Native puede enviar órdenes remotas." }, 403);
+            }
 
             const targetUuid = String(body.target_device_uuid || "").trim();
             const command = String(body.command || "").trim().toLowerCase();
@@ -107,7 +175,9 @@ export async function deviceCommands(request, env) {
 
         if (request.method === "GET") {
             const url = new URL(request.url);
-            const receiver = await ownedDevice(env, url.searchParams.get("email"), url.searchParams.get("device_uuid"));
+            const receiver = await authenticatedReceiver(
+                env, request, url.searchParams.get("email"), url.searchParams.get("device_uuid")
+            );
             if (receiver.error) return response({ success: false, error: receiver.error }, receiver.status);
             const rows = await env.DB.prepare(`
                 SELECT id, command, payload_json, created_at FROM device_remote_commands
@@ -128,7 +198,7 @@ export async function deviceCommandResult(request, env) {
     try {
         if (request.method !== "POST") return response({ success: false, error: "Método no permitido." }, 405);
         const body = await request.json();
-        const receiver = await ownedDevice(env, body.email, body.device_uuid);
+        const receiver = await authenticatedReceiver(env, request, body.email, body.device_uuid);
         if (receiver.error) return response({ success: false, error: receiver.error }, receiver.status);
         const id = String(body.command_id || "").trim();
         const state = String(body.state || "").trim().toUpperCase();
