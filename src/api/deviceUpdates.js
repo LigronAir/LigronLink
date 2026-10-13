@@ -15,6 +15,7 @@ const CHANNEL = /^[a-z][a-z0-9_-]{0,31}$/;
 // equipos ni navegadores. Si algún día el paquete supera este umbral, se
 // añadirá subida multipart privada, no una excepción insegura.
 const MAX_PACKAGE_BYTES = 95 * 1024 * 1024;
+const RETAIN_INACTIVE_RELEASES = 2;
 
 function response(payload, status = 200) {
     return Response.json(payload, { status, headers: corsHeaders });
@@ -56,6 +57,35 @@ function packageUrl(request, releaseId, deviceUuid) {
     url.pathname = `/api/v1/device/update/package/${encodeURIComponent(releaseId)}`;
     url.search = new URLSearchParams({ device_uuid: deviceUuid }).toString();
     return url.toString();
+}
+
+async function pruneInactiveReleaseObjects(env, userId, channel) {
+    // Conservamos el activo y los dos paquetes inmediatamente anteriores:
+    // rollback operativo sin convertir R2 en un histórico ilimitado. D1
+    // conserva el registro de auditoría aunque el objeto ya no exista.
+    const retired = await env.DB.prepare(`
+        SELECT package_url
+        FROM device_update_releases
+        WHERE usuario_id=?1
+          AND channel=?2
+          AND source_kind='r2-private'
+          AND active=0
+          AND package_url NOT IN (
+              SELECT package_url
+              FROM device_update_releases
+              WHERE usuario_id=?1 AND channel=?2 AND active=1 AND source_kind='r2-private'
+          )
+        ORDER BY datetime(created_at) DESC
+        LIMIT -1 OFFSET ?3
+    `).bind(userId, channel, RETAIN_INACTIVE_RELEASES).all();
+    const objectKeys = [...new Set((retired.results || []).map((row) => String(row.package_url || "")))]
+        .filter(Boolean);
+    if (!objectKeys.length) return;
+    const deleted = await Promise.allSettled(objectKeys.map((key) => env.LIGRONPI_RELEASES.delete(key)));
+    const failed = deleted.filter((result) => result.status === "rejected");
+    if (failed.length) {
+        console.warn(`LigronPi: no se pudieron purgar ${failed.length} paquete(s) retirado(s).`);
+    }
 }
 
 export async function deviceUpdatePackage(request, env, releaseId) {
@@ -106,6 +136,7 @@ export async function deviceUpdatePackage(request, env, releaseId) {
                     VALUES (?1, ?2, ?3, ?4, 'r2-private', ?5, ?6, ?7, ?2)
                 `).bind(id, user.id, channel, version, objectKey, packageHash, packageSize)
             ]);
+            await pruneInactiveReleaseObjects(env, user.id, channel);
             return response({ success: true, update_id: id, version, channel, package_size: packageSize });
         }
 

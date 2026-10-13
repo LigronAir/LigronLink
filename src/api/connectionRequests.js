@@ -1,6 +1,7 @@
 // ### FIX — NATIVE-OWNED CONNECTION ORCHESTRATION
 import { findDeviceByUuid } from "../database/devices.js";
 import { findUserByEmail } from "../database/users.js";
+import { notifyNativeControl } from "../realtime/nativeControlHub.js";
 
 const headers = { "Access-Control-Allow-Origin": "https://ligronair.tv", "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type" };
 
@@ -81,6 +82,11 @@ export async function connectionRequest(request, env) {
             .bind(account.id, nativeUuid, deviceUuid).run();
         await env.DB.prepare(`INSERT INTO connection_requests (request_id, usuario_id, pi_device_uuid, native_device_uuid, host, port, requested_transport, active_transport, state, expires_at) VALUES (?1,?2,?3,?4,?5,NULL,'DIRECT_CALLER',?6,'PENDING',datetime('now','+90 seconds'))`)
             .bind(requestId, account.id, deviceUuid, nativeUuid, route.host, route.transport).run();
+        await notifyNativeControl(env, nativeUuid, "connection.requested", {
+            request_id: requestId,
+            pi_uuid: deviceUuid,
+            transport: route.transport
+        });
         return Response.json({ success: true, request: { request_id: requestId, state: "PENDING", destination_device_uuid: nativeUuid, host: route.host, port: 0, route: "DIRECT_CALLER", transport: route.transport } }, { headers });
     } catch (error) { return Response.json({ success: false, error: error.message }, { status: 400, headers }); }
 }
@@ -151,9 +157,19 @@ export async function connectionReady(request, env) {
         // PI_READY turns the short negotiation lease into an active stream
         // lease.  It is subsequently governed by Pi presence/cancel, not an
         // arbitrary 90-second timeout in the middle of live video.
-        const row = await env.DB.prepare(`UPDATE connection_requests SET state='CALLER_ACTIVE', expires_at=datetime('now','+12 hours'), updated_at=datetime('now') WHERE request_id=?1 AND usuario_id=?2 AND pi_device_uuid=?3 AND state='BOX_READY' AND datetime(expires_at)>datetime('now') RETURNING request_id, source_id, host, port, state`)
+        // El Native no puede llamar hasta que Pi haya abierto su listener.
+        // CALLER_REQUIRED permanece visible para el canal push y para el
+        // respaldo HTTP; CALLER_ACTIVE lo ocultaba antes de que Native
+        // pudiera recibir la orden.
+        const row = await env.DB.prepare(`UPDATE connection_requests SET state='CALLER_REQUIRED', expires_at=datetime('now','+12 hours'), updated_at=datetime('now') WHERE request_id=?1 AND usuario_id=?2 AND pi_device_uuid=?3 AND state='BOX_READY' AND datetime(expires_at)>datetime('now') RETURNING request_id, native_device_uuid, source_id, host, port, state`)
             .bind(requestId, account.id, deviceUuid).first();
         if (!row) throw new Error("La solicitud no está disponible para iniciar la llamada.");
+        await notifyNativeControl(env, row.native_device_uuid, "connection.caller_required", {
+            request_id: row.request_id,
+            source_id: row.source_id,
+            host: row.host,
+            port: row.port
+        });
         return Response.json({ success: true, request: row }, { headers });
     } catch (error) { return Response.json({ success: false, error: error.message }, { status: 409, headers }); }
 }

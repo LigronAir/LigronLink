@@ -45,11 +45,8 @@ export function buildRoutePlan({ pi, native, piNetwork = {}, nativeNetwork = {},
     const lanReady = bothOnline && samePrivateLan(piNetwork.ipv4_address, nativeNetwork.ipv4_address);
     const offlineReason = "Pi y Native deben estar ONLINE en LigronLink.";
     const candidates = [
-        relay
-            ? candidate("LIGRONRELAY_SRT", "LigronRelay", bothOnline ? "READY" : "UNAVAILABLE", bothOnline
-                ? "Ruta principal: ambos equipos salen al relay; no requiere abrir puertos ni una IP pública."
-                : offlineReason)
-            : candidate("LIGRONRELAY_SRT", "LigronRelay", "UNAVAILABLE", "Infraestructura relay todavía no desplegada. No se seleccionará hasta estar configurada."),
+        // Las rutas privadas no consumen relay ni dependen de su plano de
+        // control. Si están comprobadas, son la vía normal de producción.
         candidate("TAILSCALE_DIRECT_CALLER", "LigronTail directo", tailReady ? "READY" : "UNAVAILABLE", tailReady
             ? `Reserva privada comprobada: ${piNetwork.tailscale_ipv4_address} → ${nativeTailAddress}.`
             : !bothOnline ? offlineReason : "Requiere Pi y Native activos en el mismo tailnet. Una VPN de terceros puede bloquear el UDP de la aplicación."),
@@ -57,7 +54,12 @@ export function buildRoutePlan({ pi, native, piNetwork = {}, nativeNetwork = {},
             ? `Ambos equipos están en la misma LAN: ${piNetwork.ipv4_address} → ${nativeNetwork.ipv4_address}.`
             : !bothOnline ? offlineReason : "Solo se utiliza si Pi y Native comparten la misma subred privada."),
         candidate("IPV6_DIRECT_CALLER", "IPv6 directa", "UNAVAILABLE", "Reservada para una IP IPv6 global y un listener dedicado. No se activa con fe80:: ni con IPv6 de Tailscale."),
-        candidate("UPNP_DIRECT_CALLER", "UPnP / puerto público", "UNAVAILABLE", "No se selecciona automáticamente: necesita una comprobación real de accesibilidad y no resuelve VPN de escritorio o CGNAT.")
+        candidate("UPNP_DIRECT_CALLER", "UPnP / puerto público", "UNAVAILABLE", "No se selecciona automáticamente: necesita una comprobación real de accesibilidad y no resuelve VPN de escritorio o CGNAT."),
+        relay
+            ? candidate("LIGRONRELAY_SRT", "LigronRelay", bothOnline ? "READY" : "UNAVAILABLE", bothOnline
+                ? "Ruta de respaldo: ambos equipos salen al relay; no requiere abrir puertos ni una IP pública."
+                : offlineReason)
+            : candidate("LIGRONRELAY_SRT", "LigronRelay", "UNAVAILABLE", "Infraestructura relay todavía no desplegada. No se seleccionará hasta estar configurada.")
     ];
     return { candidates, selected: candidates.find((item) => item.selectable) || null };
 }

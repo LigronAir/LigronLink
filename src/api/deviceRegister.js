@@ -6,6 +6,8 @@
 // ### FIX
 import { findUserByEmail } from "../database/users.js";
 import { findDeviceByUuid, registerOrUpdateDevice } from "../database/devices.js";
+import { requireUserSession } from "../security/sessions.js";
+import { issueDeviceCredential } from "../security/deviceCredentials.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -153,6 +155,13 @@ export async function deviceRegister(request, env) {
         }
 
         const usuarioId = usuario.id;
+        const authenticatedUser = await requireUserSession(request, env.DB);
+        if (authenticatedUser && Number(authenticatedUser.id) !== Number(usuarioId)) {
+            return Response.json(
+                { success: false, error: "La sesión no coincide con la cuenta del equipo." },
+                { status: 403, headers: corsHeaders }
+            );
+        }
         const existente = await findDeviceByUuid(env.DB, uuid);
 
         // Un UUID ya conocido nunca cambia de cuenta por un registro. La
@@ -213,6 +222,12 @@ export async function deviceRegister(request, env) {
         // OK
         // --------------------------------------------------
 
+        // Sólo un registro respaldado por una sesión válida recibe el secreto
+        // revocable de reconexión. Los clientes heredados siguen funcionando.
+        const deviceCredential = authenticatedUser
+            ? await issueDeviceCredential(env.DB, uuid)
+            : "";
+
         return Response.json(
 
             {
@@ -225,7 +240,8 @@ export async function deviceRegister(request, env) {
                 publicIp: esNative ? publicIp : null,
 
                 created: resultado.created,
-                updated: resultado.updated
+                updated: resultado.updated,
+                device_credential: deviceCredential || undefined
 
             },
 

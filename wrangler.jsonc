@@ -32,5 +32,15 @@
       "binding": "LIGRONPI_RELEASES",
       "bucket_name": "ligronpi-releases"
     }
+  ],
+
+  "durable_objects": {
+    "bindings": [
+      { "name": "NATIVE_CONTROL_HUB", "class_name": "NativeControlHub" }
+    ]
+  },
+
+  "migrations": [
+    { "tag": "v1-native-control-hub", "new_sqlite_classes": ["NativeControlHub"] }
   ]
 }
