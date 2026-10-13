@@ -23,5 +23,14 @@
       "database_name": "ligronlink-dev",
       "database_id": "451fa705-e956-4936-ad84-00cc328303f9"
     }
+  ],
+
+  // Paquetes de actualización privados. El Worker comprueba la identidad de
+  // la Pi antes de leer cualquier objeto; el bucket nunca se publica por URL.
+  "r2_buckets": [
+    {
+      "binding": "LIGRONPI_RELEASES",
+      "bucket_name": "ligronpi-releases"
+    }
   ]
 }

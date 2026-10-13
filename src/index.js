@@ -28,7 +28,7 @@ import { deviceCommands, deviceCommandResult } from "./api/deviceCommands.js";
 import { deviceCredential } from "./api/deviceCredential.js";
 import { deviceBootstrap } from "./api/deviceBootstrap.js";
 import { poolClaim } from "./api/poolClaim.js";
-import { deviceUpdates } from "./api/deviceUpdates.js";
+import { deviceUpdatePackage, deviceUpdates } from "./api/deviceUpdates.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -251,6 +251,14 @@ export default {
             url.pathname === "/api/v1/device/update"
         ) {
             return await deviceUpdates(request, env);
+        }
+
+        if (
+            (request.method === "GET" || request.method === "POST") &&
+            url.pathname.startsWith("/api/v1/device/update/package/")
+        ) {
+            const releaseId = decodeURIComponent(url.pathname.slice("/api/v1/device/update/package/".length));
+            return await deviceUpdatePackage(request, env, releaseId);
         }
 
         // Pool sólo solicita una reclamación; Link ejecuta la transición por
