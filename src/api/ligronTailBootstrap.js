@@ -10,11 +10,12 @@
 import { hashPassword, verifyPassword } from "../security/hash.js";
 import { findUserByEmail, updateUserPasswordHash } from "../database/users.js";
 import { findDeviceByUuid } from "../database/devices.js";
+import { requireDeviceCredential } from "../security/deviceCredentials.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type"
+    "Access-Control-Allow-Headers": "Content-Type, Authorization"
 };
 
 function response(payload, status = 200) {
@@ -52,41 +53,58 @@ export async function ligronTailBootstrap(request, env) {
         }
 
         const body = await request.json();
-        const email = String(body.email || "").trim().toLowerCase();
-        const password = String(body.password || "");
         const deviceUuid = String(body.device_uuid || "").trim();
-        if (!email || !password || !deviceUuid) {
-            return response({
-                success: false,
-                code: "BOOTSTRAP_INPUT_MISSING",
-                error: "Debe validar la cuenta y el equipo antes de activar LigronTail."
-            }, 400);
-        }
+        const usesDeviceCredential = /^Device\s+/i.test(String(request.headers.get("Authorization") || ""));
+        let device = null;
 
-        // Esta operación crea una identidad de red. A diferencia del resto
-        // del heartbeat, exige la contraseña recién introducida y no acepta
-        // sólo email + UUID.
-        const account = await findUserByEmail(env.DB, email);
-        const verification = account
-            ? await verifyPassword(password, account.password_hash)
-            : { valid: false, needsRehash: false };
-        if (!verification.valid) {
-            return response({
-                success: false,
-                code: "ACCOUNT_VALIDATION_FAILED",
-                error: "No se pudo validar la cuenta para activar LigronTail."
-            }, 401);
-        }
-        if (verification.needsRehash) {
-            await updateUserPasswordHash(env.DB, account.id, await hashPassword(password));
-        }
-        const device = await findDeviceByUuid(env.DB, deviceUuid);
-        if (!device || Number(device.usuario_id) !== Number(account.id)) {
-            return response({
-                success: false,
-                code: "DEVICE_OWNERSHIP_FAILED",
-                error: "El equipo no pertenece a la cuenta autenticada."
-            }, 403);
+        if (usesDeviceCredential) {
+            // LigronPi no conserva contraseñas de clientes. Su credencial
+            // cifrada de equipo sólo puede pedir una clave efímera para su
+            // propio UUID, nunca para otro dispositivo de la cuenta.
+            if (!deviceUuid || !await requireDeviceCredential(request, env.DB, deviceUuid)) {
+                return response({ success: false, code: "DEVICE_AUTH_FAILED", error: "La credencial de esta Pi no es válida." }, 401);
+            }
+            device = await findDeviceByUuid(env.DB, deviceUuid);
+            if (!device) {
+                return response({ success: false, code: "DEVICE_OWNERSHIP_FAILED", error: "El equipo no está registrado." }, 403);
+            }
+            if (!String(device.tipo || "").toLowerCase().includes("ligronpi")) {
+                return response({ success: false, code: "DEVICE_TYPE_NOT_ALLOWED", error: "Sólo una Pi puede usar el alta autónoma de LigronTail." }, 403);
+            }
+        } else {
+            const email = String(body.email || "").trim().toLowerCase();
+            const password = String(body.password || "");
+            if (!email || !password || !deviceUuid) {
+                return response({
+                    success: false,
+                    code: "BOOTSTRAP_INPUT_MISSING",
+                    error: "Debe validar la cuenta y el equipo antes de activar LigronTail."
+                }, 400);
+            }
+
+            // El alta manual de Native exige la contraseña recién introducida.
+            const account = await findUserByEmail(env.DB, email);
+            const verification = account
+                ? await verifyPassword(password, account.password_hash)
+                : { valid: false, needsRehash: false };
+            if (!verification.valid) {
+                return response({
+                    success: false,
+                    code: "ACCOUNT_VALIDATION_FAILED",
+                    error: "No se pudo validar la cuenta para activar LigronTail."
+                }, 401);
+            }
+            if (verification.needsRehash) {
+                await updateUserPasswordHash(env.DB, account.id, await hashPassword(password));
+            }
+            device = await findDeviceByUuid(env.DB, deviceUuid);
+            if (!device || Number(device.usuario_id) !== Number(account.id)) {
+                return response({
+                    success: false,
+                    code: "DEVICE_OWNERSHIP_FAILED",
+                    error: "El equipo no pertenece a la cuenta autenticada."
+                }, 403);
+            }
         }
 
         const clientId = configuredValue(env, "LIGRONTAIL_OAUTH_CLIENT_ID");
@@ -122,7 +140,7 @@ export async function ligronTailBootstrap(request, env) {
                         }
                     },
                     expirySeconds: 600,
-                    description: `LigronAir Native ${deviceUuid.slice(0, 12)}`
+                    description: `LigronAir ${String(device.tipo || "device")} ${deviceUuid.slice(0, 12)}`
                 })
             }
         );

@@ -9,6 +9,12 @@
 
   "workers_dev": true,
 
+  // Pi y Native usan esta URL estable. El subdominio workers.dev queda sólo
+  // como acceso técnico; no debe ser la única puerta de la API de producción.
+  "routes": [
+    { "pattern": "api.ligronair.tv", "custom_domain": true }
+  ],
+
   // Identificadores no secretos del plano LigronTail. Las credenciales OAuth
   // se cargan exclusivamente como secretos de Worker, nunca en este fichero
   // ni en Native.
@@ -25,14 +31,9 @@
     }
   ],
 
-  // Paquetes de actualización privados. El Worker comprueba la identidad de
-  // la Pi antes de leer cualquier objeto; el bucket nunca se publica por URL.
-  "r2_buckets": [
-    {
-      "binding": "LIGRONPI_RELEASES",
-      "bucket_name": "ligronpi-releases"
-    }
-  ],
+  // R2 queda deliberadamente fuera hasta que exista el bucket de releases.
+  // Las rutas de actualización ya responden de forma controlada cuando el
+  // binding no está disponible; no debe impedir Pi↔Link↔Native.
 
   "durable_objects": {
     "bindings": [

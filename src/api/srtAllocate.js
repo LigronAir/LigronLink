@@ -237,10 +237,13 @@ export async function srtAllocate(request, env) {
         if (!selectedRoute && publishedEndpoint) {
             selectedRoute = {
                 id: "NATIVE_PUBLISHED_DIRECT",
-                label: "SRT directo publicado por Native",
-                state: "READY",
+                label: "SRT directo publicado por Native (sin verificar)",
+                // La publicación de host:puerto sólo confirma el listener
+                // local de Native. No demuestra que el UDP atraviese el
+                // router/CGNAT hasta una Pi en otra red.
+                state: "CANDIDATE",
                 selectable: true,
-                reason: `Native publicó ${publishedEndpoint}:${assignment.port}; se probará como caller directo.`
+                reason: `Native publicó ${publishedEndpoint}:${assignment.port}; se probará como caller directo, pero la accesibilidad exterior aún no está verificada.`
             };
             effectiveRoutePlan = {
                 ...routePlan,
