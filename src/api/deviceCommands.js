@@ -168,7 +168,7 @@ export async function deviceCommands(request, env) {
             await env.DB.prepare(`
                 INSERT INTO device_remote_commands
                     (id, usuario_id, sender_device_uuid, target_device_uuid, command, payload_json, expires_at)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now','+90 seconds'))
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now','+3 minutes'))
             `).bind(id, sender.user.id, sender.uuid, targetUuid, command, JSON.stringify(payload)).run();
             return response({ success: true, command_id: id, state: "PENDING" });
         }

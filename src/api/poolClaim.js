@@ -65,7 +65,10 @@ async function queuePiCommand(db, userId, nativeUuid, piUuid, command, payload) 
     await db.prepare(`
         INSERT INTO device_remote_commands
             (id, usuario_id, sender_device_uuid, target_device_uuid, command, payload_json, expires_at)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now','+90 seconds'))
+        -- La Pi consulta órdenes cada 20 s y puede estar terminando el
+        -- enrolamiento de Tail. Noventa segundos permitían que Pool caducase
+        -- antes de la primera entrega tras una reconexión.
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now','+3 minutes'))
     `).bind(
         id, userId, nativeUuid, piUuid, command, JSON.stringify(payload || {})
     ).run();
@@ -235,11 +238,31 @@ export async function poolClaim(request, env) {
         }
 
         if (currentState === "RESERVED" && receiver.reservado_por_uuid === pi.uuid) {
+            // Una versión anterior podía dejar la reserva a nombre de esta
+            // misma Pi después de caducar la orden de arranque. Reclamándola
+            // otra vez no se debe contestar simplemente "asignada": se
+            // rearma la operación de forma idempotente. Si ya emite, la Pi
+            // reconoce la misma caja y confirma sin reiniciar vídeo.
+            const startCommandId = await queuePiCommand(
+                env.DB, user.id, native.uuid, pi.uuid, "pool_claim", {
+                    native_uuid: native.uuid,
+                    native_alias: native.alias || "LigronAir",
+                    source_id: sourceId
+                }
+            );
+            const switchId = await createArmingSwitch(env.DB, {
+                userId: user.id,
+                nativeUuid: native.uuid,
+                sourceId,
+                incomingPiUuid: pi.uuid,
+                startCommandId
+            });
             return response({
                 success: true,
-                state: "ASSIGNED",
-                message: "Esta LigronPi ya posee la reserva de la vía indicada."
-            });
+                state: "ARMING",
+                switch_id: switchId,
+                message: "La vía ya pertenecía a esta LigronPi; se ha reenviado la confirmación de arranque."
+            }, 202);
         }
 
         if (currentState === "BUSY" || currentState === "OFFLINE") {
