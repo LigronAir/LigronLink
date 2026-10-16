@@ -6,7 +6,11 @@
 // ### FIX
 import { findDeviceByUuid, registerOrUpdateDevice } from "../database/devices.js";
 import { requireUserSession } from "../security/sessions.js";
-import { issueDeviceIdentity } from "../security/deviceCredentials.js";
+import {
+    issueDeviceCredential,
+    issueDeviceIdentity,
+    requireDeviceCredential
+} from "../security/deviceCredentials.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -17,6 +21,10 @@ const corsHeaders = {
 function isLigronPi(device) {
     return ["ligronpi", "ligronpi native", "ligronpi_native"]
         .includes(String(device?.tipo || "").trim().toLowerCase());
+}
+
+function isLigronNative(device) {
+    return String(device?.tipo || "").trim().toLowerCase().includes("ligronair");
 }
 
 // ==========================================================
@@ -127,9 +135,21 @@ export async function deviceRegister(request, env) {
         // --------------------------------------------------
 
         const authenticatedUser = await requireUserSession(request, env.DB);
-        if (!authenticatedUser) {
+        const existente = await findDeviceByUuid(env.DB, uuid);
+        // Un Native ya registrado puede volver a anunciarse con SU propia
+        // identidad Device después de un reinicio. Esa identidad no permite
+        // crear equipos ni moverlos de cuenta: sólo actualiza el UUID que ya
+        // le pertenece. El alta inicial y cualquier cambio de propietario
+        // siguen exigiendo Bearer de la cuenta.
+        const nativeDeviceCredential = !authenticatedUser
+            && existente
+            && isLigronNative(existente)
+            && isLigronNative({ tipo })
+            ? await requireDeviceCredential(request, env.DB, uuid, { touch: true })
+            : null;
+        if (!authenticatedUser && !nativeDeviceCredential) {
             return Response.json(
-                { success: false, error: "Debe iniciar sesión antes de registrar un equipo." },
+                { success: false, error: "Debe iniciar sesión o usar la identidad ya sellada del Native." },
                 { status: 401, headers: corsHeaders }
             );
         }
@@ -137,14 +157,13 @@ export async function deviceRegister(request, env) {
         // pero la pertenencia se resuelve exclusivamente desde el Bearer
         // firmado. UUID + correo nunca vuelve a ser una forma de apropiarse
         // de una Pi ni de reemitir una credencial revocada.
-        if (email && email !== String(authenticatedUser.email || "").trim().toLowerCase()) {
+        if (authenticatedUser && email && email !== String(authenticatedUser.email || "").trim().toLowerCase()) {
             return Response.json(
                 { success: false, error: "La sesión no coincide con la cuenta del equipo." },
                 { status: 403, headers: corsHeaders }
             );
         }
-        const usuarioId = authenticatedUser.id;
-        const existente = await findDeviceByUuid(env.DB, uuid);
+        const usuarioId = authenticatedUser ? authenticatedUser.id : existente.usuario_id;
 
         // Un UUID ya conocido nunca cambia de cuenta por un registro. La
         // compartición multiempresa se hará más adelante mediante membresías
@@ -209,9 +228,12 @@ export async function deviceRegister(request, env) {
         // entrar en Tail; sólo puede canjear una autorización que el dueño
         // cree más adelante en Link. De esa forma la revocación sí significa
         // revocación, sin convertir cada reinstalación en un ritual manual.
-        const identity = isLigronPi({ tipo })
+        const identity = authenticatedUser && isLigronPi({ tipo })
             ? await issueDeviceIdentity(env.DB, uuid)
             : null;
+        const nativeCredential = authenticatedUser && isLigronNative({ tipo })
+            ? await issueDeviceCredential(env.DB, uuid)
+            : "";
 
         return Response.json(
 
@@ -226,7 +248,7 @@ export async function deviceRegister(request, env) {
 
                 created: resultado.created,
                 updated: resultado.updated,
-                device_credential: identity?.deviceCredential || undefined,
+                device_credential: identity?.deviceCredential || nativeCredential || undefined,
                 recovery_credential: identity?.recoveryCredential || undefined
 
             },
