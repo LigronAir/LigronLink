@@ -1,6 +1,6 @@
 import { findDeviceByUuid } from "../database/devices.js";
 import { requireUserSession } from "../security/sessions.js";
-import { issueDeviceCredential, revokeDeviceCredential } from "../security/deviceCredentials.js";
+import { revokeDeviceCredential } from "../security/deviceCredentials.js";
 
 const headers = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -29,16 +29,10 @@ export async function deviceCredential(request, env) {
         if (request.method === "DELETE") {
             return Response.json({ success: true, revoked: await revokeDeviceCredential(env.DB, deviceUuid) }, { headers });
         }
-        if (request.method !== "POST") {
-            return Response.json({ success: false, error: "Método no permitido." }, { status: 405, headers });
-        }
-        const token = await issueDeviceCredential(env.DB, deviceUuid);
         return Response.json({
-            success: true,
-            device_uuid: deviceUuid,
-            credential: token,
-            warning: "Se muestra una única vez. Guárdela sólo mediante el provisionado cifrado de la Pi."
-        }, { headers });
+            success: false,
+            error: "La credencial de LigronPi se renueva automáticamente desde la Pi; ya no se puede copiar desde el panel."
+        }, { status: 410, headers });
     } catch (error) {
         return Response.json({ success: false, error: String(error?.message || error) }, { status: 500, headers });
     }

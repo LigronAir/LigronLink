@@ -146,10 +146,10 @@ export default {
             return await nativeControl(request, env);
         }
 
-        // Credencial persistente de Pi: se emite sólo a una sesión web
-        // autenticada y se consume desde systemd, no desde settings.json.
+        // Sólo queda la revocación de emergencia: las nuevas credenciales se
+        // obtienen desde la propia Pi, nunca copiando un secreto del panel.
         if (
-            (request.method === "POST" || request.method === "DELETE") &&
+            request.method === "DELETE" &&
             url.pathname === "/api/v1/device/credential"
         ) {
             return await deviceCredential(request, env);
