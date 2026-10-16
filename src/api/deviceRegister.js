@@ -4,10 +4,9 @@
 // ==========================================================
 
 // ### FIX
-import { findUserByEmail } from "../database/users.js";
 import { findDeviceByUuid, registerOrUpdateDevice } from "../database/devices.js";
 import { requireUserSession } from "../security/sessions.js";
-import { issueDeviceCredential } from "../security/deviceCredentials.js";
+import { issueDeviceIdentity } from "../security/deviceCredentials.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -60,7 +59,6 @@ export async function deviceRegister(request, env) {
         const uuid = body.uuid?.trim() || "";
 
         const email = body.email?.trim().toLowerCase() || "";
-        const recoverDeviceCredential = body.recover_device_credential === true;
         // ### FIX — IPv6 / DUAL STACK
         // Opcional: los clientes antiguos siguen registrándose sin este campo.
         const networkCapabilities = body.network_capabilities && typeof body.network_capabilities === "object"
@@ -128,46 +126,24 @@ export async function deviceRegister(request, env) {
         // Usuario
         // --------------------------------------------------
 
-        if (!email) {
-
-            return Response.json(
-                {
-                    success: false,
-                    error: "Debe iniciar sesión antes de registrar un equipo."
-                },
-                {
-                    status: 401,
-                    headers: corsHeaders
-                }
-            );
-
-        }
-
-        const usuario = await findUserByEmail(env.DB, email);
-
-        if (!usuario) {
-
-            return Response.json(
-                {
-                    success: false,
-                    error: "No se pudo resolver la cuenta del equipo."
-                },
-                {
-                    status: 401,
-                    headers: corsHeaders
-                }
-            );
-
-        }
-
-        const usuarioId = usuario.id;
         const authenticatedUser = await requireUserSession(request, env.DB);
-        if (authenticatedUser && Number(authenticatedUser.id) !== Number(usuarioId)) {
+        if (!authenticatedUser) {
+            return Response.json(
+                { success: false, error: "Debe iniciar sesión antes de registrar un equipo." },
+                { status: 401, headers: corsHeaders }
+            );
+        }
+        // El cliente puede conservar `email` por compatibilidad de interfaz,
+        // pero la pertenencia se resuelve exclusivamente desde el Bearer
+        // firmado. UUID + correo nunca vuelve a ser una forma de apropiarse
+        // de una Pi ni de reemitir una credencial revocada.
+        if (email && email !== String(authenticatedUser.email || "").trim().toLowerCase()) {
             return Response.json(
                 { success: false, error: "La sesión no coincide con la cuenta del equipo." },
                 { status: 403, headers: corsHeaders }
             );
         }
+        const usuarioId = authenticatedUser.id;
         const existente = await findDeviceByUuid(env.DB, uuid);
 
         // Un UUID ya conocido nunca cambia de cuenta por un registro. La
@@ -228,21 +204,14 @@ export async function deviceRegister(request, env) {
         // OK
         // --------------------------------------------------
 
-        // Sólo un registro respaldado por una sesión válida recibe el secreto
-        // revocable de reconexión. Los clientes heredados siguen funcionando.
-        // Una Pi ya conocida puede reparar su secreto local sin pedir una
-        // contraseña en campo. La recuperación está acotada: UUID existente,
-        // tipo LigronPi y misma cuenta ya asignada; nunca crea equipos nuevos
-        // ni permite mover un equipo entre cuentas. Es necesaria cuando una
-        // actualización o una tarjeta clonada conservó un token revocado.
-        const canRecoverKnownPi = recoverDeviceCredential
-            && existente
-            && Number(existente.usuario_id) === Number(usuarioId)
-            && isLigronPi(existente)
-            && isLigronPi({ tipo });
-        const deviceCredential = (authenticatedUser || canRecoverKnownPi)
-            ? await issueDeviceCredential(env.DB, uuid)
-            : "";
+        // El alta explícita de una Pi recibe dos secretos locales: el de uso
+        // normal y uno de recuperación. El segundo no permite operar ni
+        // entrar en Tail; sólo puede canjear una autorización que el dueño
+        // cree más adelante en Link. De esa forma la revocación sí significa
+        // revocación, sin convertir cada reinstalación en un ritual manual.
+        const identity = isLigronPi({ tipo })
+            ? await issueDeviceIdentity(env.DB, uuid)
+            : null;
 
         return Response.json(
 
@@ -257,7 +226,8 @@ export async function deviceRegister(request, env) {
 
                 created: resultado.created,
                 updated: resultado.updated,
-                device_credential: deviceCredential || undefined
+                device_credential: identity?.deviceCredential || undefined,
+                recovery_credential: identity?.recoveryCredential || undefined
 
             },
 

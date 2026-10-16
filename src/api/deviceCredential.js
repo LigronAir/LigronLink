@@ -1,6 +1,7 @@
 import { findDeviceByUuid } from "../database/devices.js";
 import { requireUserSession } from "../security/sessions.js";
 import { revokeDeviceCredential } from "../security/deviceCredentials.js";
+import { revokeLigronTailDevice } from "./ligronTailBootstrap.js";
 
 const headers = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -27,7 +28,9 @@ export async function deviceCredential(request, env) {
             return Response.json({ success: false, error: "LigronPi no autorizada para esta cuenta." }, { status: 403, headers });
         }
         if (request.method === "DELETE") {
-            return Response.json({ success: true, revoked: await revokeDeviceCredential(env.DB, deviceUuid) }, { headers });
+            const revoked = await revokeDeviceCredential(env.DB, deviceUuid);
+            const ligronTail = await revokeLigronTailDevice(env, deviceUuid);
+            return Response.json({ success: true, revoked, ligron_tail: ligronTail }, { headers });
         }
         return Response.json({
             success: false,

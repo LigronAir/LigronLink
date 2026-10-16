@@ -45,6 +45,67 @@ async function tailscaleAccessToken(clientId, clientSecret) {
     return token.access_token;
 }
 
+function piHostname(deviceUuid) {
+    return `ligronpi-${String(deviceUuid || "").replaceAll("-", "").slice(0, 8).toLowerCase()}`;
+}
+
+// Revocar la credencial de Link debe sacar también a la Pi de la red privada,
+// no limitarse a impedir la próxima petición de auth-key. El OAuth de
+// LigronTail necesita el permiso `devices:core` además del de crear keys;
+// cuando un despliegue todavía no lo tiene, devolvemos el estado explícito
+// para que el panel no afirme falsamente que retiró el nodo.
+export async function revokeLigronTailDevice(env, deviceUuid) {
+    const clientId = configuredValue(env, "LIGRONTAIL_OAUTH_CLIENT_ID");
+    const clientSecret = configuredValue(env, "LIGRONTAIL_OAUTH_CLIENT_SECRET");
+    const tailnet = configuredValue(env, "LIGRONTAIL_TAILNET").toLowerCase();
+    const tag = configuredValue(env, "LIGRONTAIL_DEVICE_TAG").toLowerCase();
+    if (!clientId || !clientSecret || !tailnet || !tag.startsWith("tag:")) {
+        return { state: "NOT_CONFIGURED", removed: false };
+    }
+    try {
+        const accessToken = await tailscaleAccessToken(clientId, clientSecret);
+        const listing = await fetch(
+            `https://api.tailscale.com/api/v2/tailnet/${encodeURIComponent(tailnet)}/devices`,
+            { headers: { "Authorization": `Bearer ${accessToken}` } }
+        );
+        if (!listing.ok) {
+            return { state: "LIST_DENIED", removed: false };
+        }
+        const payload = await listing.json();
+        const hostname = piHostname(deviceUuid);
+        const matchingNodes = (Array.isArray(payload?.devices) ? payload.devices : [])
+            .filter((node) => {
+                const nodeHostname = String(node?.hostname || "").toLowerCase();
+                const nodeTags = Array.isArray(node?.tags) ? node.tags.map((item) => String(item).toLowerCase()) : [];
+                return nodeHostname === hostname && (nodeTags.length === 0 || nodeTags.includes(tag));
+            });
+        if (!matchingNodes.length) {
+            return { state: "NOT_FOUND", removed: false };
+        }
+        let removed = 0;
+        for (const node of matchingNodes) {
+            const nodeId = String(node?.id || "").trim();
+            if (!nodeId) continue;
+            const deletion = await fetch(
+                `https://api.tailscale.com/api/v2/device/${encodeURIComponent(nodeId)}`,
+                {
+                    method: "DELETE",
+                    headers: { "Authorization": `Bearer ${accessToken}` }
+                }
+            );
+            if (deletion.ok || deletion.status === 404) removed += 1;
+        }
+        return {
+            state: removed === matchingNodes.length ? "REMOVED" : "DELETE_DENIED",
+            removed: removed === matchingNodes.length,
+            nodes: matchingNodes.length
+        };
+    } catch (error) {
+        console.error("LigronTail revoke failed:", error?.message || error);
+        return { state: "PROVIDER_UNAVAILABLE", removed: false };
+    }
+}
+
 // POST /api/v1/ligrontail/bootstrap
 export async function ligronTailBootstrap(request, env) {
     try {
@@ -61,7 +122,7 @@ export async function ligronTailBootstrap(request, env) {
             // LigronPi no conserva contraseñas de clientes. Su credencial
             // cifrada de equipo sólo puede pedir una clave efímera para su
             // propio UUID, nunca para otro dispositivo de la cuenta.
-            if (!deviceUuid || !await requireDeviceCredential(request, env.DB, deviceUuid)) {
+            if (!deviceUuid || !await requireDeviceCredential(request, env.DB, deviceUuid, { touch: true })) {
                 return response({ success: false, code: "DEVICE_AUTH_FAILED", error: "La credencial de esta Pi no es válida." }, 401);
             }
             device = await findDeviceByUuid(env.DB, deviceUuid);

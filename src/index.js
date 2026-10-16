@@ -27,6 +27,9 @@ import { ligronRelayAuth } from "./api/ligronRelay.js";
 import { deviceCommands, deviceCommandResult } from "./api/deviceCommands.js";
 import { deviceCredential } from "./api/deviceCredential.js";
 import { deviceBootstrap } from "./api/deviceBootstrap.js";
+import { deviceAuthorization } from "./api/deviceAuthorization.js";
+import { deviceRecovery, deviceRecoveryIdentity } from "./api/deviceRecovery.js";
+import { pairingApprove, pairingComplete, pairingList, pairingRequest } from "./api/devicePairing.js";
 import { poolClaim } from "./api/poolClaim.js";
 import { deviceUpdatePackage, deviceUpdates } from "./api/deviceUpdates.js";
 import { nativeControl } from "./api/nativeControl.js";
@@ -160,6 +163,44 @@ export default {
             url.pathname === "/api/v1/device/bootstrap"
         ) {
             return await deviceBootstrap(request, env);
+        }
+
+        if (
+            request.method === "POST" &&
+            url.pathname === "/api/v1/device/authorization"
+        ) {
+            return await deviceAuthorization(request, env);
+        }
+
+        if (
+            request.method === "POST" &&
+            url.pathname === "/api/v1/device/recovery"
+        ) {
+            return await deviceRecovery(request, env);
+        }
+
+        if (
+            request.method === "POST" &&
+            url.pathname === "/api/v1/device/recovery/identity"
+        ) {
+            return await deviceRecoveryIdentity(request, env);
+        }
+
+        if (request.method === "POST" && url.pathname === "/api/v1/device/pairing/request") {
+            return await pairingRequest(request, env);
+        }
+
+        if (request.method === "GET" && url.pathname === "/api/v1/device/pairings") {
+            return await pairingList(request, env);
+        }
+
+        if (request.method === "POST" && url.pathname === "/api/v1/device/pairing/complete") {
+            return await pairingComplete(request, env);
+        }
+
+        if (request.method === "POST" && url.pathname.startsWith("/api/v1/device/pairing/") && url.pathname.endsWith("/approve")) {
+            const pairingId = decodeURIComponent(url.pathname.slice("/api/v1/device/pairing/".length, -"/approve".length));
+            return await pairingApprove(request, env, pairingId);
         }
 
         // ==================================================

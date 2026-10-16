@@ -12,7 +12,9 @@ export async function deviceBootstrap(request, env) {
     try {
         const url = new URL(request.url);
         const deviceUuid = String(url.searchParams.get("device_uuid") || "").trim();
-        const credential = await requireDeviceCredential(request, env.DB, deviceUuid);
+        // Arranque explícito: actualiza diagnóstico como máximo cada seis
+        // horas. Los heartbeats y el control normal no escriben en D1.
+        const credential = await requireDeviceCredential(request, env.DB, deviceUuid, { touch: true });
         const device = credential && await findDeviceByUuid(env.DB, deviceUuid);
         if (!device || !String(device.tipo || "").trim().toLowerCase().includes("ligronpi")) {
             return Response.json({ success: false, error: "Credencial de LigronPi no válida." }, { status: 401, headers });
