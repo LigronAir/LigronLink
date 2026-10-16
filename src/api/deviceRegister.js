@@ -15,6 +15,11 @@ const corsHeaders = {
     "Access-Control-Allow-Headers": "Content-Type"
 };
 
+function isLigronPi(device) {
+    return ["ligronpi", "ligronpi native", "ligronpi_native"]
+        .includes(String(device?.tipo || "").trim().toLowerCase());
+}
+
 // ==========================================================
 // POST /api/v1/device/register
 // ==========================================================
@@ -55,6 +60,7 @@ export async function deviceRegister(request, env) {
         const uuid = body.uuid?.trim() || "";
 
         const email = body.email?.trim().toLowerCase() || "";
+        const recoverDeviceCredential = body.recover_device_credential === true;
         // ### FIX — IPv6 / DUAL STACK
         // Opcional: los clientes antiguos siguen registrándose sin este campo.
         const networkCapabilities = body.network_capabilities && typeof body.network_capabilities === "object"
@@ -224,7 +230,17 @@ export async function deviceRegister(request, env) {
 
         // Sólo un registro respaldado por una sesión válida recibe el secreto
         // revocable de reconexión. Los clientes heredados siguen funcionando.
-        const deviceCredential = authenticatedUser
+        // Una Pi ya conocida puede reparar su secreto local sin pedir una
+        // contraseña en campo. La recuperación está acotada: UUID existente,
+        // tipo LigronPi y misma cuenta ya asignada; nunca crea equipos nuevos
+        // ni permite mover un equipo entre cuentas. Es necesaria cuando una
+        // actualización o una tarjeta clonada conservó un token revocado.
+        const canRecoverKnownPi = recoverDeviceCredential
+            && existente
+            && Number(existente.usuario_id) === Number(usuarioId)
+            && isLigronPi(existente)
+            && isLigronPi({ tipo });
+        const deviceCredential = (authenticatedUser || canRecoverKnownPi)
             ? await issueDeviceCredential(env.DB, uuid)
             : "";
 
