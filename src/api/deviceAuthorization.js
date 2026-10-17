@@ -51,7 +51,8 @@ export async function deviceAuthorization(request, env) {
             ON CONFLICT(device_uuid) DO UPDATE SET
                 authorized_by_user_id=excluded.authorized_by_user_id,
                 created_at=datetime('now'),
-                expires_at=datetime('now', '+10 minutes')
+                expires_at=datetime('now', '+10 minutes'),
+                consumed_at=NULL
         `).bind(deviceUuid, user.id).run();
         return Response.json({
             success: true,
