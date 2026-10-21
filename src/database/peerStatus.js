@@ -6,7 +6,8 @@ export async function findLinkedPiStatuses(db, userId, nativeUuid) {
     // ausencia no debe ocultar al Native que una Pi le ha pedido una caja.
     const reservedSql = `
         SELECT p.uuid AS device_uuid, p.alias, p.public_ip,
-               r.runtime_state, r.streaming, r.target_srt_url, r.telemetry_json,
+               r.runtime_state, r.streaming, r.pipeline_active, r.signal_available,
+               r.target_srt_url, r.telemetry_json,
                r.ultima_actualizacion,
                s.source_id, s.nombre AS receiver_name,
                s.estado AS reservation_state, s.host, s.port, s.mode,
@@ -27,7 +28,8 @@ export async function findLinkedPiStatuses(db, userId, nativeUuid) {
     // que Native tenga el mismo vínculo y pueda habilitar el remoto.
     const activeTailSql = (withTelemetry) => `
         SELECT p.uuid AS device_uuid, p.alias, p.public_ip,
-               r.runtime_state, r.streaming, r.target_srt_url,
+               r.runtime_state, r.streaming, r.pipeline_active, r.signal_available,
+               r.target_srt_url,
                ${withTelemetry ? "r.telemetry_json" : "NULL AS telemetry_json"},
                r.ultima_actualizacion,
                COALESCE((
@@ -91,8 +93,8 @@ export async function findLinkedPiStatuses(db, userId, nativeUuid) {
                 throw error;
             }
             const legacyTelemetrySql = reservedSql.replace(
-                "r.runtime_state, r.streaming, r.target_srt_url, r.telemetry_json,\n               r.ultima_actualizacion,",
-                "r.runtime_state, r.streaming, r.target_srt_url, NULL AS telemetry_json,\n               r.ultima_actualizacion,"
+                "r.runtime_state, r.streaming, r.pipeline_active, r.signal_available,\n               r.target_srt_url, r.telemetry_json,\n               r.ultima_actualizacion,",
+                "r.runtime_state, r.streaming, r.pipeline_active, r.signal_available,\n               r.target_srt_url, NULL AS telemetry_json,\n               r.ultima_actualizacion,"
             );
             rows = (await db.prepare(legacyTelemetrySql).bind(userId, nativeUuid).all()).results;
         }
@@ -137,6 +139,7 @@ export async function findLinkedPiStatuses(db, userId, nativeUuid) {
         const fallback = await db.prepare(`
             SELECT p.uuid AS device_uuid, p.alias, p.public_ip,
                    NULL AS runtime_state, 0 AS streaming,
+                   0 AS pipeline_active, 0 AS signal_available,
                    NULL AS target_srt_url, NULL AS ultima_actualizacion,
                    s.source_id, s.nombre AS receiver_name,
                    s.estado AS reservation_state, s.host, s.port, s.mode,
