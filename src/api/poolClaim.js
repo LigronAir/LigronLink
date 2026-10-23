@@ -98,7 +98,7 @@ async function otherReservationForPi(db, userId, piUuid, nativeUuid, sourceId) {
           ON native.uuid=s.equipo_uuid AND native.usuario_id=s.usuario_id
         WHERE s.usuario_id=?1
           AND s.reservado_por_uuid=?2
-          AND s.estado='RESERVED'
+          AND s.estado IN ('RESERVED', 'BUSY')
           AND NOT (s.equipo_uuid=?3 AND s.source_id=?4)
         LIMIT 1
     `).bind(userId, piUuid, nativeUuid, sourceId).first();
@@ -235,6 +235,17 @@ export async function poolClaim(request, env) {
                 switch_id: created.switchId,
                 message: `${pi.alias || "LigronPi"} ha sido reclamada para ${native.alias || "LigronAir"} · vía ${sourceId}. Esperando confirmación de la Pi.`
             }, 202);
+        }
+
+        if (currentState === "BUSY" && receiver.reservado_por_uuid === pi.uuid) {
+            // La Pi ya está entregando programa en esta caja. Un doble clic,
+            // una recarga de Pool o un refresco de Native no puede liberar ni
+            // reiniciar esa emisión: es una operación idempotente.
+            return response({
+                success: true,
+                state: "ACTIVE",
+                message: "La vía ya está activa para esta LigronPi; se conserva la emisión actual."
+            });
         }
 
         if (currentState === "RESERVED" && receiver.reservado_por_uuid === pi.uuid) {
