@@ -27,7 +27,7 @@ export async function replaceSrtDestinations(db, device, receivers) {
                 -- un nuevo snapshot de Native, pero una reserva abandonada
                 -- vuelve a quedar disponible al siguiente heartbeat.
                 estado = CASE
-                    WHEN estado = 'RESERVED'
+                    WHEN estado IN ('RESERVED', 'BUSY')
                      AND ?3 != 'OFFLINE'
                      AND EXISTS (
                         SELECT 1
@@ -36,7 +36,7 @@ export async function replaceSrtDestinations(db, device, receivers) {
                           AND pi.usuario_id = srt_destinos.usuario_id
                           AND UPPER(pi.estado) = 'ONLINE'
                           AND datetime(pi.ultima_conexion) >= datetime('now', '-75 seconds')
-                     ) THEN 'RESERVED'
+                     ) THEN estado
                     ELSE 'OFFLINE'
                 END,
                 ultima_actualizacion = datetime('now')
@@ -97,7 +97,7 @@ export async function replaceSrtDestinations(db, device, receivers) {
                     -- Sobrevive al cambio listener/caller y a sus reintentos
                     -- mientras la Pi continúe con presencia reciente.
                     estado = CASE
-                        WHEN srt_destinos.estado = 'RESERVED'
+                        WHEN srt_destinos.estado IN ('RESERVED', 'BUSY')
                          AND excluded.estado != 'OFFLINE'
                          AND EXISTS (
                             SELECT 1
@@ -107,11 +107,18 @@ export async function replaceSrtDestinations(db, device, receivers) {
                               AND UPPER(pi.estado) = 'ONLINE'
                               AND datetime(pi.ultima_conexion) >= datetime('now', '-75 seconds')
                          )
-                            THEN 'RESERVED'
+                            THEN CASE
+                                -- Link mantiene la propiedad de la caja,
+                                -- pero el Native es quien confirma que el
+                                -- receptor ya está recibiendo vídeo.
+                                WHEN excluded.estado = 'BUSY' THEN 'BUSY'
+                                WHEN excluded.estado = 'FREE' THEN 'RESERVED'
+                                ELSE excluded.estado
+                            END
                         ELSE excluded.estado
                     END,
                     reservado_por_uuid = CASE
-                        WHEN srt_destinos.estado = 'RESERVED'
+                        WHEN srt_destinos.estado IN ('RESERVED', 'BUSY')
                          AND excluded.estado != 'OFFLINE'
                          AND EXISTS (
                             SELECT 1

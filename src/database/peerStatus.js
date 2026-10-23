@@ -19,7 +19,7 @@ export async function findLinkedPiStatuses(db, userId, nativeUuid) {
         LEFT JOIN device_runtime_status r
           ON r.device_uuid=p.uuid AND r.usuario_id=p.usuario_id
         WHERE s.usuario_id=?1 AND s.equipo_uuid=?2
-          AND s.estado='RESERVED'
+          AND s.estado IN ('RESERVED','BUSY')
         ORDER BY s.source_id
     `;
     // Una Pi que entra directamente por Tailnet puede dejar la caja BUSY
@@ -76,7 +76,7 @@ export async function findLinkedPiStatuses(db, userId, nativeUuid) {
               WHERE reserved.usuario_id=r.usuario_id
                 AND reserved.equipo_uuid=?2
                 AND reserved.reservado_por_uuid=r.device_uuid
-                AND reserved.estado='RESERVED'
+                AND reserved.estado IN ('RESERVED','BUSY')
           )
         ORDER BY source_id ASC
     `;
@@ -149,7 +149,7 @@ export async function findLinkedPiStatuses(db, userId, nativeUuid) {
             FROM srt_destinos s
             JOIN equipos p ON p.uuid=s.reservado_por_uuid AND p.usuario_id=s.usuario_id
             WHERE s.usuario_id=?1 AND s.equipo_uuid=?2
-              AND s.estado='RESERVED'
+              AND s.estado IN ('RESERVED','BUSY')
             ORDER BY s.source_id
         `).bind(userId, nativeUuid).all();
         return fallback.results;
@@ -167,13 +167,13 @@ export async function findTargetPresence(db, userId, targetUuid, sourceUuid = ""
              WHERE usuario_id=equipos.usuario_id
                AND equipo_uuid=equipos.uuid
                AND reservado_por_uuid=?3
-               AND estado='RESERVED'
+               AND estado IN ('RESERVED','BUSY')
              ORDER BY source_id LIMIT 1) AS reserved_source_id,
           (SELECT nombre FROM srt_destinos
              WHERE usuario_id=equipos.usuario_id
                AND equipo_uuid=equipos.uuid
                AND reservado_por_uuid=?3
-               AND estado='RESERVED'
+               AND estado IN ('RESERVED','BUSY')
              ORDER BY source_id LIMIT 1) AS reserved_receiver_name
         FROM equipos WHERE usuario_id=?1 AND uuid=?2
     `).bind(userId, targetUuid, sourceUuid).first();

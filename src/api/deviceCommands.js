@@ -108,7 +108,7 @@ export async function deviceCommands(request, env) {
                 WHERE EXISTS (
                     SELECT 1 FROM srt_destinos
                     WHERE usuario_id=?1 AND equipo_uuid=?2
-                      AND reservado_por_uuid=?3 AND estado='RESERVED'
+                      AND reservado_por_uuid=?3 AND estado IN ('RESERVED','BUSY')
                 )
                 UNION ALL
                 SELECT 'ACTIVE_TAIL_SESSION' AS proof
