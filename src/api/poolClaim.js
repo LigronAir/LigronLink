@@ -233,7 +233,7 @@ export async function poolClaim(request, env) {
                 success: true,
                 state: "ARMING",
                 switch_id: created.switchId,
-                message: `${pi.alias || "LigronPi"} ha sido reclamada para ${native.alias || "LigronAir"} · vía ${sourceId}. Esperando confirmación de la Pi.`
+                message: `${pi.alias || "LigronPi"} ha sido reclamada para ${native.alias || "LigronAir"} · vía ${sourceId}. La Pi validará el destino e iniciará el vídeo automáticamente.`
             }, 202);
         }
 
@@ -272,7 +272,7 @@ export async function poolClaim(request, env) {
                 success: true,
                 state: "ARMING",
                 switch_id: switchId,
-                message: "La vía ya pertenecía a esta LigronPi; se ha reenviado la confirmación de arranque."
+                message: "La vía ya pertenecía a esta LigronPi; se ha reenviado la orden de arranque automático."
             }, 202);
         }
 
