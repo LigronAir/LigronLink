@@ -12,7 +12,7 @@ const corsHeaders = {
 // Primera fase segura. Reiniciar sistema, actualizar paquetes o cambiar una
 // Wi-Fi (que exigiría transportar una contraseña) no entran en esta cola.
 const ALLOWED_COMMANDS = new Set([
-    "stream_start", "stream_stop", "pipeline_restart", "wifi_scan", "status_refresh", "bond_set", "stream_tune", "pool_claim",
+    "stream_start", "stream_stop", "pipeline_restart", "wifi_scan", "status_refresh", "bond_set", "stream_tune", "pool_claim", "pool_move",
     // Soporte remoto con acciones cerradas. La Pi inicia siempre la conexión
     // HTTPS; no se expone SSH, shell ni parámetros de sistema por Link.
     "support_tail_retry", "support_diagnostics"

@@ -27,7 +27,7 @@ export async function replaceSrtDestinations(db, device, receivers) {
                 -- un nuevo snapshot de Native, pero una reserva abandonada
                 -- vuelve a quedar disponible al siguiente heartbeat.
                 estado = CASE
-                    WHEN estado IN ('RESERVED', 'BUSY')
+                    WHEN estado IN ('ARMING', 'RESERVED', 'BUSY')
                      AND ?3 != 'OFFLINE'
                      AND EXISTS (
                         SELECT 1
@@ -97,7 +97,12 @@ export async function replaceSrtDestinations(db, device, receivers) {
                     -- Sobrevive al cambio listener/caller y a sus reintentos
                     -- mientras la Pi continúe con presencia reciente.
                     estado = CASE
-                        WHEN srt_destinos.estado IN ('RESERVED', 'BUSY')
+                        -- Una liberación voluntaria deja el propietario a
+                        -- NULL. El hold local que Native pueda publicar en
+                        -- el siguiente heartbeat no debe recrear una reserva.
+                        WHEN excluded.estado = 'RESERVED'
+                         AND srt_destinos.reservado_por_uuid IS NULL THEN 'FREE'
+                        WHEN srt_destinos.estado IN ('ARMING', 'RESERVED', 'BUSY')
                          AND excluded.estado != 'OFFLINE'
                          AND EXISTS (
                             SELECT 1
@@ -112,13 +117,25 @@ export async function replaceSrtDestinations(db, device, receivers) {
                                 -- pero el Native es quien confirma que el
                                 -- receptor ya está recibiendo vídeo.
                                 WHEN excluded.estado = 'BUSY' THEN 'BUSY'
+                                -- ARMING no es una reserva: sólo es la
+                                -- ventana corta en la que la Pi recibe la
+                                -- orden. Si todavía no hay vídeo se conserva
+                                -- como inicio; no se etiqueta RESERVED.
+                                WHEN srt_destinos.estado = 'ARMING'
+                                  AND excluded.estado = 'FREE' THEN 'ARMING'
                                 WHEN excluded.estado = 'FREE' THEN 'RESERVED'
+                                -- Si Link ya liberó una cobertura de forma
+                                -- voluntaria, un snapshot local tardío de
+                                -- Native no puede resucitar un RESERVED sin
+                                -- propietario.
+                                WHEN excluded.estado = 'RESERVED'
+                                  AND srt_destinos.reservado_por_uuid IS NULL THEN 'FREE'
                                 ELSE excluded.estado
                             END
                         ELSE excluded.estado
                     END,
                     reservado_por_uuid = CASE
-                        WHEN srt_destinos.estado IN ('RESERVED', 'BUSY')
+                        WHEN srt_destinos.estado IN ('ARMING', 'RESERVED', 'BUSY')
                          AND excluded.estado != 'OFFLINE'
                          AND EXISTS (
                             SELECT 1
@@ -131,7 +148,15 @@ export async function replaceSrtDestinations(db, device, receivers) {
                             THEN srt_destinos.reservado_por_uuid
                         ELSE NULL
                     END,
-                    ultima_actualizacion = datetime('now')
+                    -- No se renueva el reloj de un inicio sin vídeo. De ese
+                    -- modo un ARming que no llega a señal caduca por sí solo
+                    -- y jamás se transforma en una reserva fantasma.
+                    ultima_actualizacion = CASE
+                        WHEN srt_destinos.estado = 'ARMING'
+                         AND excluded.estado = 'FREE'
+                            THEN srt_destinos.ultima_actualizacion
+                        ELSE datetime('now')
+                    END
                 `
             )
             .bind(
@@ -379,7 +404,7 @@ export async function allocateSrtDestination(db, usuarioId, piUuid, deviceUuid, 
             WHERE s.usuario_id = ?1
               AND s.equipo_uuid = ?3
               AND s.source_id = ?4
-              AND s.estado = 'RESERVED'
+              AND s.estado IN ('ARMING', 'RESERVED')
               AND s.reservado_por_uuid = ?2
               AND e.usuario_id = ?1
               AND UPPER(e.estado) = 'ONLINE'
@@ -395,7 +420,10 @@ export async function allocateSrtDestination(db, usuarioId, piUuid, deviceUuid, 
             `
             UPDATE srt_destinos
             SET
-                estado = 'RESERVED',
+                -- La elección no toma una caja: abre un ARming efímero. La
+                -- caja será BUSY al llegar vídeo; RESERVED sólo existe tras
+                -- una caída de una señal que ya estuvo activa.
+                estado = 'ARMING',
                 reservado_por_uuid = ?2,
                 ultima_actualizacion = datetime('now')
             WHERE id = (
@@ -421,7 +449,7 @@ export async function allocateSrtDestination(db, usuarioId, piUuid, deviceUuid, 
                     s.source_id ASC
                 LIMIT 1
             )
-            AND estado = 'FREE'
+              AND estado = 'FREE'
             RETURNING
                 id,
                 equipo_uuid,
@@ -464,7 +492,10 @@ export async function releaseSrtDestination(db, usuarioId, piUuid, deviceUuid) {
             WHERE usuario_id = ?1
               AND reservado_por_uuid = ?2
               AND equipo_uuid = ?3
-              AND estado = 'RESERVED'
+              -- Un stop voluntario también libera una vía que ya estaba
+              -- BUSY. El siguiente heartbeat Native no puede reanimarla:
+              -- su propietario ya será NULL en el conflicto de snapshot.
+              AND estado IN ('ARMING', 'RESERVED', 'BUSY')
             `
         )
         .bind(

@@ -204,14 +204,6 @@ export async function poolClaim(request, env) {
         const otherReservation = await otherReservationForPi(
             env.DB, user.id, pi.uuid, native.uuid, sourceId
         );
-        if (otherReservation) {
-            const assignedNative = otherReservation.native_alias || "otro LigronAir";
-            const assignedReceiver = otherReservation.nombre || `vía ${otherReservation.source_id}`;
-            return response({
-                success: false,
-                error: `${pi.alias || "La LigronPi"} ya está reservada en ${assignedNative} · ${assignedReceiver}. Libera o cambia esa asignación antes de reclamarla aquí.`
-            }, 409);
-        }
 
         const receiver = await receiverForUpdate(env.DB, user.id, native.uuid, sourceId);
         if (!receiver || !Number(receiver.port)) {
@@ -226,6 +218,36 @@ export async function poolClaim(request, env) {
             }, 409);
         }
         const currentState = String(receiver.estado || "OFFLINE").toUpperCase();
+
+        // Mover una Pi propia de una caja a otra es una operación normal de
+        // realización. No puede quedar bloqueada por su antigua cobertura:
+        // la Pi cierra voluntariamente esa salida (liberándola) y reclama la
+        // nueva caja en un único comando. La nueva vía sigue FREE hasta que
+        // llegue vídeo; no se crea una reserva previa.
+        if (otherReservation) {
+            if (currentState !== "FREE") {
+                const assignedNative = otherReservation.native_alias || "otro LigronAir";
+                const assignedReceiver = otherReservation.nombre || `vía ${otherReservation.source_id}`;
+                return response({
+                    success: false,
+                    error: `${pi.alias || "La LigronPi"} está en ${assignedNative} · ${assignedReceiver} y la nueva vía ya no está libre.`
+                }, 409);
+            }
+            const moveCommandId = await queuePiCommand(
+                env.DB, user.id, native.uuid, pi.uuid, "pool_move", {
+                    native_uuid: native.uuid,
+                    native_alias: native.alias || "LigronAir",
+                    source_id: sourceId
+                }
+            );
+            return response({
+                success: true,
+                state: "MOVING",
+                command_id: moveCommandId,
+                message: `${pi.alias || "LigronPi"} cambia a la vía ${sourceId}: cierra su salida actual, libera aquella caja e inicia vídeo en la nueva automáticamente.`
+            }, 202);
+        }
+
         if (currentState === "FREE") {
             const created = await claimFreeReceiver(env.DB, user, native, pi, sourceId);
             if (created.error) return response({ success: false, error: created.error }, created.status);
@@ -273,6 +295,22 @@ export async function poolClaim(request, env) {
                 state: "ARMING",
                 switch_id: switchId,
                 message: "La vía ya pertenecía a esta LigronPi; se ha reenviado la orden de arranque automático."
+            }, 202);
+        }
+
+        if (currentState === "ARMING" && receiver.reservado_por_uuid === pi.uuid) {
+            const startCommandId = await queuePiCommand(
+                env.DB, user.id, native.uuid, pi.uuid, "pool_claim", {
+                    native_uuid: native.uuid,
+                    native_alias: native.alias || "LigronAir",
+                    source_id: sourceId
+                }
+            );
+            return response({
+                success: true,
+                state: "ARMING",
+                command_id: startCommandId,
+                message: "La Pi ya estaba iniciando esta vía; se ha reenviado el arranque real de SRT."
             }, 202);
         }
 
