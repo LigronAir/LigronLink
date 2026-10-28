@@ -12,7 +12,7 @@ const corsHeaders = {
 // Primera fase segura. Reiniciar sistema, actualizar paquetes o cambiar una
 // Wi-Fi (que exigiría transportar una contraseña) no entran en esta cola.
 const ALLOWED_COMMANDS = new Set([
-    "stream_start", "stream_stop", "pipeline_restart", "wifi_scan", "status_refresh", "bond_set", "stream_tune", "pool_claim", "pool_move",
+    "stream_start", "stream_stop", "pipeline_restart", "wifi_scan", "status_refresh", "bond_set", "stream_tune", "hotswap_commit", "hotswap_rollback", "pool_claim", "pool_move",
     // Soporte remoto con acciones cerradas. La Pi inicia siempre la conexión
     // HTTPS; no se expone SSH, shell ni parámetros de sistema por Link.
     "support_tail_retry", "support_diagnostics"
@@ -88,7 +88,7 @@ export async function deviceCommands(request, env) {
             }
             if (command === "stream_tune" && (
                 !Number.isInteger(payload.bitrate_kbps) || payload.bitrate_kbps < 500 || payload.bitrate_kbps > 12000 ||
-                !Number.isInteger(payload.latency_ms) || payload.latency_ms < 50 || payload.latency_ms > 2000
+                !Number.isInteger(payload.latency_ms) || payload.latency_ms < 50 || payload.latency_ms > 10000
             )) {
                 return response({ success: false, error: "Bitrate o latencia fuera del rango operativo." }, 400);
             }
