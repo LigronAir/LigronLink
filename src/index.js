@@ -34,7 +34,10 @@ import { poolClaim } from "./api/poolClaim.js";
 import { deviceUpdatePackage, deviceUpdates } from "./api/deviceUpdates.js";
 import { nativeControl } from "./api/nativeControl.js";
 export { NativeControlHub } from "./realtime/nativeControlHub.js";
+import { thumbnailRequests } from "./api/thumbnailRequests.js";
 export { ThumbnailHub } from "./thumbnails/ThumbnailHub.js";
+
+const thumbnailRequestsPath = "/api/v1/thumbnails/requests";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -56,9 +59,23 @@ export default {
         if (request.method === "OPTIONS") {
 
             return new Response(null, {
-                headers: corsHeaders
+                headers: url.pathname === thumbnailRequestsPath
+                    ? { ...corsHeaders, "Access-Control-Allow-Headers": "Content-Type, Authorization, Idempotency-Key" }
+                    : corsHeaders
             });
 
+        }
+
+        if (request.method === "POST" && url.pathname === thumbnailRequestsPath) {
+            return await thumbnailRequests(request, env);
+        }
+
+        const batchPrefix = thumbnailRequestsPath + "/";
+        if (request.method === "GET" && url.pathname.startsWith(batchPrefix)) {
+            const batchId = url.pathname.slice(batchPrefix.length);
+            if (batchId && !batchId.includes("/")) {
+                return await thumbnailRequests(request, env, batchId);
+            }
         }
 
         // ==================================================
