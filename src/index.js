@@ -34,6 +34,7 @@ import { poolClaim } from "./api/poolClaim.js";
 import { deviceUpdatePackage, deviceUpdates } from "./api/deviceUpdates.js";
 import { nativeControl } from "./api/nativeControl.js";
 export { NativeControlHub } from "./realtime/nativeControlHub.js";
+export { ThumbnailHub } from "./thumbnails/ThumbnailHub.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",

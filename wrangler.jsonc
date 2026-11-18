@@ -48,11 +48,13 @@
 
   "durable_objects": {
     "bindings": [
-      { "name": "NATIVE_CONTROL_HUB", "class_name": "NativeControlHub" }
+      { "name": "NATIVE_CONTROL_HUB", "class_name": "NativeControlHub" },
+      { "name": "THUMBNAIL_HUB", "class_name": "ThumbnailHub" }
     ]
   },
 
   "migrations": [
-    { "tag": "v1-native-control-hub", "new_sqlite_classes": ["NativeControlHub"] }
+    { "tag": "v1-native-control-hub", "new_sqlite_classes": ["NativeControlHub"] },
+    { "tag": "v2-thumbnail-hub", "new_sqlite_classes": ["ThumbnailHub"] }
   ]
 }
