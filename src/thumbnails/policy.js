@@ -29,7 +29,9 @@ export function reserveR2Operation(usage, operation) {
 
 // El cuarto frame expulsa el primero. El caller borra cada clave expirada sin ListObjects.
 export function retainLatestSnapshots(existing, snapshot) {
-    const items = [...(Array.isArray(existing) ? existing : []), snapshot];
+    const history = Array.isArray(existing) ? existing : [];
+    if (history.includes(snapshot)) return { retained: history, expired: [] };
+    const items = [...history, snapshot];
     return { retained: items.slice(-THUMBNAIL_POLICY.maxSnapshotsPerOrigin),
         expired: items.slice(0, -THUMBNAIL_POLICY.maxSnapshotsPerOrigin) };
 }

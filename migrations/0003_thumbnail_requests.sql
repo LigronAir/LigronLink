@@ -20,9 +20,18 @@ CREATE TABLE thumbnail_captures (
     source_id INTEGER,
     source_device_uuid TEXT,
     state TEXT NOT NULL,
-    generation INTEGER,
+    generation TEXT,
+    sha256 TEXT,
+    object_key TEXT,
+    captured_at_ms INTEGER,
+    received_at_ms INTEGER,
+    ready_at_ms INTEGER,
+    failed_at_ms INTEGER,
+    failure_code TEXT,
     deadline_at INTEGER NOT NULL
 );
+
+CREATE INDEX thumbnail_captures_pending ON thumbnail_captures(producer_device_uuid, state, deadline_at);
 
 CREATE INDEX thumbnail_captures_batch ON thumbnail_captures(batch_id);
 

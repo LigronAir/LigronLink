@@ -214,13 +214,14 @@ async function readBatch(db, userId, batchId) {
         `).bind(userId, batchId),
         db.prepare(`
             UPDATE thumbnail_captures SET state = 'EXPIRED'
-            WHERE batch_id = ?2 AND state = 'PENDING' AND deadline_at <= ?3
+            WHERE batch_id = ?2 AND state IN ('PENDING','READY') AND deadline_at <= ?3
               AND EXISTS (SELECT 1 FROM thumbnail_requests WHERE usuario_id = ?1 AND batch_id = ?2)
         `).bind(userId, batchId, Date.now()),
         db.prepare(`
             SELECT capture.capture_id, capture.producer, capture.producer_device_uuid,
                    capture.source_id, capture.source_device_uuid, capture.state,
-                   capture.generation, capture.deadline_at AS deadline_ms
+                   capture.generation, capture.deadline_at AS deadline_ms,
+                   capture.failure_code, capture.captured_at_ms, capture.received_at_ms
             FROM thumbnail_captures AS capture
             JOIN thumbnail_requests AS request ON request.batch_id = capture.batch_id
             WHERE request.usuario_id = ?1 AND capture.batch_id = ?2
@@ -234,9 +235,15 @@ async function readBatch(db, userId, batchId) {
     if (!row) return fail(404, "Batch not found");
     const batch = JSON.parse(row.response_json);
     batch.expires_at = new Date(row.expires_at_ms).toISOString();
-    batch.captures = captures.results;
-    batch.status = batch.captures.length && batch.captures.every(capture => capture.state === "EXPIRED")
-        ? "EXPIRED" : "PENDING";
+    batch.captures = captures.results.map(({ failure_code, captured_at_ms, received_at_ms, ...capture }) => ({
+        ...capture,
+        ...(failure_code && { failure_code }),
+        ...(captured_at_ms != null && { captured_at_ms }),
+        ...(received_at_ms != null && { received_at_ms })
+    }));
+    const states = new Set(batch.captures.map(capture => capture.state));
+    if (states.size === 1) batch.status = batch.captures[0].state;
+    else if (!states.has("PENDING")) batch.status = "COMPLETE";
     return Response.json(batch, { headers });
 }
 

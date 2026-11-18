@@ -34,6 +34,7 @@ import { poolClaim } from "./api/poolClaim.js";
 import { deviceUpdatePackage, deviceUpdates } from "./api/deviceUpdates.js";
 import { nativeControl } from "./api/nativeControl.js";
 export { NativeControlHub } from "./realtime/nativeControlHub.js";
+import { captureEndpoint } from "./api/thumbnailCaptures.js";
 import { thumbnailRequests } from "./api/thumbnailRequests.js";
 export { ThumbnailHub } from "./thumbnails/ThumbnailHub.js";
 
@@ -59,8 +60,8 @@ export default {
         if (request.method === "OPTIONS") {
 
             return new Response(null, {
-                headers: url.pathname === thumbnailRequestsPath
-                    ? { ...corsHeaders, "Access-Control-Allow-Headers": "Content-Type, Authorization, Idempotency-Key" }
+                headers: url.pathname.startsWith("/api/v1/thumbnails/")
+                    ? { ...corsHeaders, "Access-Control-Allow-Headers": "Content-Type, Authorization, Idempotency-Key, X-Thumbnail-Generation, X-Ligron-Assignment-Generation, X-Ligron-Captured-At-Ms", "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS" }
                     : corsHeaders
             });
 
@@ -68,6 +69,17 @@ export default {
 
         if (request.method === "POST" && url.pathname === thumbnailRequestsPath) {
             return await thumbnailRequests(request, env);
+        }
+
+        if (url.pathname === "/api/v1/thumbnails/pending" && request.method === "GET") {
+            return captureEndpoint(request, env, "pending");
+        }
+        const capture = /^\/api\/v1\/thumbnails\/captures\/([^/]+)(?:\/(image|failure))?$/.exec(url.pathname);
+        if (capture) {
+            const action = capture[2] || "upload";
+            if (request.method === { upload: "PUT", image: "GET", failure: "POST" }[action]) {
+                return captureEndpoint(request, env, action, capture[1]);
+            }
         }
 
         const batchPrefix = thumbnailRequestsPath + "/";

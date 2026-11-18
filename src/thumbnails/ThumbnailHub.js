@@ -11,6 +11,14 @@ export class ThumbnailHub {
         });
     }
 
+    async fetch(request) {
+        const { operation, args } = await request.json();
+        if (!["reserve", "reserveRead", "recordSnapshot"].includes(operation)) {
+            return new Response(null, { status: 400 });
+        }
+        return Response.json(await this[operation](...args));
+    }
+
     async reserve(accountId, originKey, nowMs = Date.now()) {
         const month = utcMonthKey(new Date(nowMs));
         const usage = Array.from(this.ctx.storage.sql.exec(`SELECT class_a AS classA, class_b AS classB FROM thumbnail_usage WHERE month=?`, month))[0] || { classA: 0, classB: 0 };
