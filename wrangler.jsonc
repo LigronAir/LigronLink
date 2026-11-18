@@ -20,8 +20,18 @@
   // ni en Native.
   "vars": {
     "LIGRONTAIL_TAILNET": "ligronair.github",
-    "LIGRONTAIL_DEVICE_TAG": "tag:ligronair-native"
+    "LIGRONTAIL_DEVICE_TAG": "tag:ligronair-native",
+    "THUMBNAILS_ENABLED": "false",
+    "THUMBNAIL_R2_MAX_CLASS_A_PER_MONTH": "10000",
+    "THUMBNAIL_R2_MAX_CLASS_B_PER_MONTH": "100000"
   },
+
+  "r2_buckets": [
+    {
+      "binding": "THUMBNAILS",
+      "bucket_name": "ligronair-thumbnails"
+    }
+  ],
 
   "d1_databases": [
     {
