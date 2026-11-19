@@ -1,5 +1,6 @@
 import { requireUserSession } from "../security/sessions.js";
 import { THUMBNAIL_POLICY } from "../thumbnails/policy.js";
+import { notifyNativeControl } from "../realtime/nativeControlHub.js";
 
 const headers = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -116,7 +117,7 @@ async function readTargets(request) {
     }
 }
 
-export async function createBatch(request, db, userId) {
+export async function createBatch(request, db, userId, env = {}) {
     const key = request.headers.get("Idempotency-Key");
     const targets = await readTargets(request);
     if (!key || key.length > 255 || !/^[!-~]+$/.test(key) || !targets) {
@@ -200,7 +201,18 @@ export async function createBatch(request, db, userId) {
     }
     const [saved, recent] = results.slice(-2);
     const row = saved.results[0];
-    if (row?.batch_id === batch.batch_id) return Response.json(batch, { status: 202, headers });
+    if (row?.batch_id === batch.batch_id) {
+        // Native mantiene un WebSocket saliente autenticado. Avisarle evita
+        // consultar D1 cada pocos segundos cuando no existe ningún encargo.
+        // El productor conserva un sondeo de recuperación por si estaba
+        // desconectado justo cuando se emitió este aviso.
+        await Promise.all([...new Set(batch.captures
+            .filter(capture => capture.producer === "native_box")
+            .map(capture => capture.producer_device_uuid))]
+            .map(nativeUuid => notifyNativeControl(env, nativeUuid,
+                "thumbnail.capture_requested", { batch_id: batch.batch_id })));
+        return Response.json(batch, { status: 202, headers });
+    }
     if (row) return replay(db, userId, row, signature);
     const retryMs = recent.results[0].last_refresh + THUMBNAIL_POLICY.minRefreshIntervalMs - now;
     return fail(429, "Refresh quota exceeded", { "Retry-After": String(Math.max(1, Math.ceil(retryMs / 1000))) });
@@ -254,7 +266,7 @@ export async function thumbnailRequests(request, env, batchId) {
     const db = env.DB;
     const user = await requireUserSession(request, db);
     if (!user) return fail(401, "Authentication required");
-    if (request.method === "POST") return createBatch(request, db, user.id);
+    if (request.method === "POST") return createBatch(request, db, user.id, env);
     if (request.method !== "GET" || !batchId) return fail(405, "Method not allowed");
 
     return readBatch(db, user.id, batchId);
