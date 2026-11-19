@@ -134,11 +134,16 @@ export async function createBatch(request, db, userId, env = {}) {
         const origin = JSON.stringify([source.producer, source.producer_device_uuid, source.source_id]);
         let capture = captures.get(origin);
         if (!capture) {
+            const captureId = crypto.randomUUID();
             capture = {
-                capture_id: crypto.randomUUID(),
+                capture_id: captureId,
                 ...source,
                 state: "PENDING",
-                generation: null,
+                // Una Pi que se previsualiza por sí misma no tiene una
+                // generación de enlace Native. Aun así cada encargo debe
+                // llevar una generación no nula, que el productor devuelve
+                // al subir y que hace idempotente la respuesta tardía.
+                generation: source.producer === "pi_preview" ? `pi:${captureId}` : null,
                 deadline_ms: deadline
             };
             captures.set(origin, capture);
@@ -168,10 +173,10 @@ export async function createBatch(request, db, userId, env = {}) {
             INSERT INTO thumbnail_captures
                 (batch_id, capture_id, producer, producer_device_uuid, source_id, source_device_uuid,
                  state, generation, deadline_at)
-            SELECT batch_id, ?2, ?3, ?4, ?5, ?6, 'PENDING', NULL, ?7
+            SELECT batch_id, ?2, ?3, ?4, ?5, ?6, 'PENDING', ?7, ?8
             FROM thumbnail_requests WHERE batch_id = ?1
         `).bind(batch.batch_id, capture.capture_id, capture.producer, capture.producer_device_uuid,
-            capture.source_id, capture.source_device_uuid, deadline)),
+            capture.source_id, capture.source_device_uuid, capture.generation, deadline)),
         ...mappedTargets.map((target, position) => db.prepare(`
             INSERT INTO thumbnail_request_targets
                 (batch_id, position, kind, device_uuid, source_id, capture_id)

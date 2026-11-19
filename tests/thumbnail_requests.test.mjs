@@ -124,7 +124,8 @@ test("creates capture metadata atomically and scopes catalog and batch lookup to
     });
     assert.deepEqual(piPreview, {
         producer: "pi_preview", producer_device_uuid: "pi", source_id: null, source_device_uuid: "pi",
-        state: "PENDING", generation: null, deadline_ms: Date.parse(batch.expires_at), capture_id: piPreview.capture_id,
+        state: "PENDING", generation: `pi:${piPreview.capture_id}`,
+        deadline_ms: Date.parse(batch.expires_at), capture_id: piPreview.capture_id,
     });
     assert.deepEqual(batch.targets, [
         { ...box(), capture_id: linked.capture_id },
@@ -153,7 +154,7 @@ test("uses the Pi preview when no online Native has its BUSY reservation", async
     assert.deepEqual(batch.captures, [
         {
             capture_id, producer: "pi_preview", producer_device_uuid: "pi", source_id: null,
-            source_device_uuid: "pi", state: "PENDING", generation: null,
+            source_device_uuid: "pi", state: "PENDING", generation: `pi:${capture_id}`,
             deadline_ms: Date.parse(batch.expires_at),
         },
     ]);

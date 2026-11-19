@@ -276,7 +276,7 @@ test("Pi preview works without SRT and retention evicts exactly the oldest objec
         const response = await worker.fetch(new Request(
             "https://test/api/v1/thumbnails/captures/" + capture.capture_id + "?device_uuid=pi", {
                 method: "PUT", body: jpeg, headers: { Authorization: "Device " + tokens.pi,
-                    "Content-Type": "image/jpeg", "X-Ligron-Assignment-Generation": "preview" }
+                    "Content-Type": "image/jpeg", "X-Ligron-Assignment-Generation": capture.generation }
             }), env);
         assert.equal(response.status, 200);
         keys.push(sqlite.prepare("SELECT object_key FROM thumbnail_captures WHERE capture_id=?")
