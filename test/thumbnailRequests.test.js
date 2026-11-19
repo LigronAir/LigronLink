@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { createBatch, thumbnailRequests } from "../src/api/thumbnailRequests.js";
 
-test("comparte capturas reservadas y conserva las vistas Pi y los orígenes externos", async t => {
+test("mantiene capturas independientes de Pi, caja y orígenes externos", async t => {
     const sqlite = new DatabaseSync(":memory:");
     t.after(() => sqlite.close());
     sqlite.exec(`
@@ -72,8 +72,10 @@ test("comparte capturas reservadas y conserva las vistas Pi y los orígenes exte
         const target = batch.targets.find(item => item.device_uuid === uuid);
         return batch.captures.find(capture => capture.capture_id === target.capture_id);
     };
-    assert.equal(batch.captures.length, 3);
-    assert.equal(captureFor("pi-a"), captureFor("native-a"));
+    assert.equal(batch.captures.length, 4);
+    assert.notEqual(captureFor("pi-a"), captureFor("native-a"));
+    assert.equal(captureFor("pi-a").producer, "pi_preview");
+    assert.equal(captureFor("pi-a").producer_device_uuid, "pi-a");
     assert.equal(captureFor("native-a").source_device_uuid, "pi-a");
     assert.equal(captureFor("pi-b").producer, "pi_preview");
     assert.equal(captureFor("native-b").source_device_uuid, null);

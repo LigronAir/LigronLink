@@ -50,20 +50,11 @@ const nativeReservations = `
 function resolveTarget(db, userId, target) {
     if (target.kind === "pi") {
         return db.prepare(`
-            WITH reservations AS (
-                SELECT destination.id, destination.equipo_uuid, destination.source_id,
-                       destination.reservado_por_uuid
-                ${nativeReservations}
-                  AND native.estado = 'ONLINE'
-            )
-            SELECT CASE WHEN reservation.id IS NULL THEN 'pi_preview' ELSE 'native_box' END AS producer,
-                   COALESCE(reservation.equipo_uuid, pi.uuid) AS producer_device_uuid,
-                   reservation.source_id, pi.uuid AS source_device_uuid
+            SELECT 'pi_preview' AS producer, pi.uuid AS producer_device_uuid,
+                   NULL AS source_id, pi.uuid AS source_device_uuid
             FROM equipos AS pi
-            LEFT JOIN reservations AS reservation ON reservation.reservado_por_uuid = pi.uuid
             WHERE pi.usuario_id = ?1 AND pi.uuid = ?2 AND lower(pi.tipo) IN ${piTypes}
               AND pi.estado IN ('ONLINE', 'BUSY')
-            ORDER BY reservation.id
             LIMIT 1
         `).bind(userId, target.device_uuid);
     }

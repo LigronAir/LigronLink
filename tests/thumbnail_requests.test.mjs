@@ -109,7 +109,7 @@ test("creates capture metadata atomically and scopes catalog and batch lookup to
     assert.equal(created.headers.get("Cache-Control"), "no-store");
     const batch = await created.json();
     assert.equal(batch.status, "PENDING");
-    const [linked, external] = batch.captures;
+    const [linked, external, piPreview] = batch.captures;
     assert.ok(linked.capture_id);
     assert.notEqual(linked.capture_id, external.capture_id);
     const pendingBox = {
@@ -122,12 +122,16 @@ test("creates capture metadata atomically and scopes catalog and batch lookup to
     assert.deepEqual(external, {
         ...pendingBox, source_id: 2, source_device_uuid: null, capture_id: external.capture_id,
     });
+    assert.deepEqual(piPreview, {
+        producer: "pi_preview", producer_device_uuid: "pi", source_id: null, source_device_uuid: "pi",
+        state: "PENDING", generation: null, deadline_ms: Date.parse(batch.expires_at), capture_id: piPreview.capture_id,
+    });
     assert.deepEqual(batch.targets, [
         { ...box(), capture_id: linked.capture_id },
         { ...box(2), capture_id: external.capture_id },
-        { ...pi(), capture_id: linked.capture_id },
+        { ...pi(), capture_id: piPreview.capture_id },
     ]);
-    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM thumbnail_captures").get().n, 2);
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM thumbnail_captures").get().n, 3);
     sqlite.exec("UPDATE srt_destinos SET estado = 'FREE' WHERE usuario_id = 1");
     assert.deepEqual(await (await call("GET", { batch: batch.batch_id })).json(), batch);
     const foreign = await call("GET", { token: other, batch: batch.batch_id });
