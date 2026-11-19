@@ -94,6 +94,20 @@ async function digest(bytes) {
         n => n.toString(16).padStart(2, "0")).join("");
 }
 
+// Native conserva una credencial de equipo, pero durante una migración o una
+// renovación puede tener todavía la sesión Bearer con la que se registró.
+// El respaldo sólo es válido para su propia caja y cuenta; nunca convierte
+// una sesión de usuario en acceso a otro productor.
+async function requireProducerCredential(request, db, deviceUuid) {
+    const device = await requireDeviceCredential(request, db, deviceUuid);
+    if (device) return device;
+    const user = await requireUserSession(request, db);
+    if (!user || !deviceUuid) return null;
+    return await db.prepare(`SELECT uuid FROM equipos
+        WHERE uuid=?1 AND usuario_id=?2 AND lower(tipo) IN ('ligronair','ligronair native','ligronair_native') LIMIT 1`)
+        .bind(deviceUuid, user.id).first();
+}
+
 function hubClient(env, account) {
     const namespace = env.THUMBNAIL_HUB;
     const stub = namespace.getByName(String(account));
@@ -117,7 +131,7 @@ async function handle(request, env, action, id) {
         device = (await db.prepare("SELECT producer_device_uuid FROM thumbnail_captures WHERE capture_id=?1")
             .bind(id).first())?.producer_device_uuid;
     }
-    const auth = image ? await requireUserSession(request, db) : await requireDeviceCredential(request, db, device);
+    const auth = image ? await requireUserSession(request, db) : await requireProducerCredential(request, db, device);
     if (!auth) reject(401, "Authentication required");
     if (action === "pending") {
         const scope = `${accountJoin} WHERE e.uuid=?1 AND c.state='PENDING' AND c.deadline_at>?2`;
@@ -217,7 +231,7 @@ async function handle(request, env, action, id) {
     if (!stored) await bucket.put(row.object_key, bytes);
     const { expired } = await hub("recordSnapshot", reservation.historyKey, row.object_key);
     for (const old of expired) await bucket.delete(old);
-    if (!await requireDeviceCredential(request, db, device)) reject(401, "Authentication required");
+    if (!await requireProducerCredential(request, db, device)) reject(401, "Authentication required");
     const ready = await update("state='READY',ready_at_ms=?3", `${pending} AND c.sha256=?4`, Date.now(), sha);
     if (!ready) {
         const latest = await load();

@@ -35,7 +35,10 @@ function normalizeTargets(items) {
 }
 
 const piTypes = "('ligronpi', 'ligronpi native')";
-const nativeTypes = "('ligronair', 'ligronair_native')";
+// Se aceptan las dos denominaciones históricas publicadas por Native.
+// Excluir "ligronair native" hacía que una Pi ya conectada a una caja BUSY
+// se resolviera erróneamente como preview de Pi, que aún no es productor.
+const nativeTypes = "('ligronair', 'ligronair native', 'ligronair_native')";
 const nativeReservations = `
     FROM srt_destinos AS destination
     JOIN equipos AS native ON native.uuid = destination.equipo_uuid
