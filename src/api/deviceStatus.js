@@ -11,6 +11,7 @@ import {
 } from "../database/devices.js";
 import { findUserByEmail } from "../database/users.js";
 import { findTargetPresence } from "../database/peerStatus.js";
+import { notifyPoolDeviceChanged } from "../realtime/poolEventHub.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -420,6 +421,18 @@ export async function deviceStatus(request, env) {
                     device.uuid
                 )
             };
+        // No se avisa por telemetría ni por heartbeat: la firma contiene sólo
+        // presencia y ruteo que alteran lo que Pool debe pintar o capturar.
+        await notifyPoolDeviceChanged(env, usuario.id, {
+            device_uuid: device.uuid,
+            signature: JSON.stringify({
+                runtime_state: runtimeState,
+                streaming: Boolean(body.streaming),
+                signal_available: Boolean(body.signal_available),
+                target_device_uuid: effectiveTargetUuid,
+                target_label: effectiveTargetLabel
+            })
+        });
         cacheNativeHeartbeat(heartbeatKey, responsePayload);
         return Response.json(responsePayload, { headers: corsHeaders });
 

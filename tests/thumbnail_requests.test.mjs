@@ -160,7 +160,7 @@ test("uses the Pi preview when no online Native has its BUSY reservation", async
     ]);
 });
 
-test("deduplicates retries, rejects conflicting keys and limits concurrent refreshes per account", async t => {
+test("deduplicates retries, rejects a repeated target and allows a newly available target", async t => {
     const { call, sqlite } = await fixture(t);
     const responses = await Promise.all([
         call("POST", { targets: [pi(), box()] }),
@@ -191,7 +191,9 @@ test("deduplicates retries, rejects conflicting keys and limits concurrent refre
         call("POST", { key: "different", targets: [pi()] }),
         call("POST", { key: "another", targets: [box()] }),
     ]);
-    assert.deepEqual(competingRefreshes.map(response => response.status).sort(), [202, 429]);
+    assert.deepEqual(competingRefreshes.map(response => response.status).sort(), [202, 202]);
+    const repeatedPi = await call("POST", { key: "pi-again", targets: [pi()] });
+    assert.equal(repeatedPi.status, 429);
 });
 
 test("GET expires only overdue pending captures belonging to the session account", async t => {

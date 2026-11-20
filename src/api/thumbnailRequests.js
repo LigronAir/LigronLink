@@ -159,16 +159,32 @@ export async function createBatch(request, db, userId, env = {}) {
         captures: [...captures.values()]
     };
     const cutoff = now - THUMBNAIL_POLICY.minRefreshIntervalMs;
+    // El intervalo es por destino, no por cuenta completa. Así una Pi que
+    // acaba de aparecer puede obtener su primera captura aunque otra Pi haya
+    // sido actualizada hace unos segundos; el mismo origen sigue limitado.
+    const targetClause = firstParameter => targets.map((_, index) => {
+        const parameter = firstParameter + index * 3;
+        return `(target.kind = ?${parameter} AND target.device_uuid = ?${parameter + 1} AND COALESCE(target.source_id, -1) = ?${parameter + 2})`;
+    }).join(" OR ");
+    const recentTargetArgs = targets.flatMap(target => [
+        target.kind,
+        target.device_uuid,
+        target.source_id ?? -1
+    ]);
     const statements = [
         db.prepare(`
             INSERT INTO thumbnail_requests
                 (batch_id, usuario_id, idempotency_key, target_signature, created_at_ms, expires_at_ms, response_json)
             SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7
             WHERE NOT EXISTS (
-                SELECT 1 FROM thumbnail_requests WHERE usuario_id = ?2 AND created_at_ms > ?8
+                SELECT 1
+                FROM thumbnail_requests AS recent
+                JOIN thumbnail_request_targets AS target ON target.batch_id = recent.batch_id
+                WHERE recent.usuario_id = ?2 AND recent.created_at_ms > ?8
+                  AND (${targetClause(9)})
             )
             ON CONFLICT (usuario_id, idempotency_key) DO NOTHING
-        `).bind(batch.batch_id, userId, key, signature, now, deadline, JSON.stringify(batch), cutoff),
+        `).bind(batch.batch_id, userId, key, signature, now, deadline, JSON.stringify(batch), cutoff, ...recentTargetArgs),
         ...batch.captures.map(capture => db.prepare(`
             INSERT INTO thumbnail_captures
                 (batch_id, capture_id, producer, producer_device_uuid, source_id, source_device_uuid,
@@ -186,9 +202,11 @@ export async function createBatch(request, db, userId, env = {}) {
         findByKey(db, userId, key),
         db.prepare(`
             SELECT MAX(created_at_ms) AS last_refresh
-            FROM thumbnail_requests
-            WHERE usuario_id = ?1 AND created_at_ms > ?2
-        `).bind(userId, cutoff)
+            FROM thumbnail_requests AS recent
+            JOIN thumbnail_request_targets AS target ON target.batch_id = recent.batch_id
+            WHERE recent.usuario_id = ?1 AND recent.created_at_ms > ?2
+              AND (${targetClause(3)})
+        `).bind(userId, cutoff, ...recentTargetArgs)
     ];
 
     let results;

@@ -33,7 +33,9 @@ import { pairingApprove, pairingComplete, pairingList, pairingRequest } from "./
 import { poolClaim } from "./api/poolClaim.js";
 import { deviceUpdatePackage, deviceUpdates } from "./api/deviceUpdates.js";
 import { nativeControl } from "./api/nativeControl.js";
+import { poolEvents } from "./api/poolEvents.js";
 export { NativeControlHub } from "./realtime/nativeControlHub.js";
+export { PoolEventHub } from "./realtime/poolEventHub.js";
 import { captureEndpoint } from "./api/thumbnailCaptures.js";
 import { thumbnailRequests } from "./api/thumbnailRequests.js";
 export { ThumbnailHub } from "./thumbnails/ThumbnailHub.js";
@@ -69,6 +71,10 @@ export default {
 
         if (request.method === "POST" && url.pathname === thumbnailRequestsPath) {
             return await thumbnailRequests(request, env);
+        }
+
+        if (url.pathname === "/api/v1/pool/events") {
+            return await poolEvents(request, env);
         }
 
         if (url.pathname === "/api/v1/thumbnails/pending" && request.method === "GET") {

@@ -49,12 +49,14 @@
   "durable_objects": {
     "bindings": [
       { "name": "NATIVE_CONTROL_HUB", "class_name": "NativeControlHub" },
-      { "name": "THUMBNAIL_HUB", "class_name": "ThumbnailHub" }
+      { "name": "THUMBNAIL_HUB", "class_name": "ThumbnailHub" },
+      { "name": "POOL_EVENT_HUB", "class_name": "PoolEventHub" }
     ]
   },
 
   "migrations": [
     { "tag": "v1-native-control-hub", "new_sqlite_classes": ["NativeControlHub"] },
-    { "tag": "v2-thumbnail-hub", "new_sqlite_classes": ["ThumbnailHub"] }
+    { "tag": "v2-thumbnail-hub", "new_sqlite_classes": ["ThumbnailHub"] },
+    { "tag": "v3-pool-event-hub", "new_sqlite_classes": ["PoolEventHub"] }
   ]
 }
