@@ -11,7 +11,7 @@ import {
 } from "../database/devices.js";
 import { findUserByEmail } from "../database/users.js";
 import { findTargetPresence } from "../database/peerStatus.js";
-import { notifyPoolDeviceChanged } from "../realtime/poolEventHub.js";
+import { notifyPoolDeviceAlive, notifyPoolDeviceChanged } from "../realtime/poolEventHub.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -433,6 +433,7 @@ export async function deviceStatus(request, env) {
                 target_label: effectiveTargetLabel
             })
         });
+        await notifyPoolDeviceAlive(env, usuario.id, device.uuid);
         cacheNativeHeartbeat(heartbeatKey, responsePayload);
         return Response.json(responsePayload, { headers: corsHeaders });
 
