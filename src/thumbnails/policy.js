@@ -4,10 +4,14 @@ export const THUMBNAIL_POLICY = Object.freeze({
     maxBytes: 16 * 1024,
     maxTargetsPerRefresh: 10,
     maxSnapshotsPerOrigin: 3,
-    minRefreshIntervalMs: 30_000,
+    // Una sesión Pool visible puede pedir una fotografía cada dos minutos.
+    // El límite es de cuenta, así que dos pestañas no duplican capturas.
+    minRefreshIntervalMs: 120_000,
     requestLifetimeMs: 30_000,
-    maxR2ClassAOperationsPerMonth: 10_000,
-    maxR2ClassBOperationsPerMonth: 100_000,
+    // Techo conservador frente al Free tier de R2 (1M/10M): protege la
+    // cuota compartida con producción y se puede ajustar por entorno.
+    maxR2ClassAOperationsPerMonth: 30_000,
+    maxR2ClassBOperationsPerMonth: 60_000,
 });
 
 export function utcDayKey(now = new Date()) { return now.toISOString().slice(0, 10); }
@@ -18,13 +22,13 @@ export function mayRefresh(lastRefreshAtMs, nowMs) {
         || nowMs - lastRefreshAtMs >= THUMBNAIL_POLICY.minRefreshIntervalMs;
 }
 
-export function reserveR2Operation(usage, operation) {
+export function reserveR2Operation(usage, operation, limits = THUMBNAIL_POLICY) {
     const next = { classA: Number(usage?.classA || 0), classB: Number(usage?.classB || 0) };
     if (operation === "put") next.classA += 1;
     else if (operation === "get") next.classB += 1;
     else throw new TypeError("Operación R2 no permitida.");
-    return next.classA <= THUMBNAIL_POLICY.maxR2ClassAOperationsPerMonth
-        && next.classB <= THUMBNAIL_POLICY.maxR2ClassBOperationsPerMonth ? next : null;
+    return next.classA <= limits.maxR2ClassAOperationsPerMonth
+        && next.classB <= limits.maxR2ClassBOperationsPerMonth ? next : null;
 }
 
 // El cuarto frame expulsa el primero. El caller borra cada clave expirada sin ListObjects.

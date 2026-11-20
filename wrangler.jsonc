@@ -22,8 +22,8 @@
     "LIGRONTAIL_TAILNET": "ligronair.github",
     "LIGRONTAIL_DEVICE_TAG": "tag:ligronair-native",
     "THUMBNAILS_ENABLED": "true",
-    "THUMBNAIL_R2_MAX_CLASS_A_PER_MONTH": "10000",
-    "THUMBNAIL_R2_MAX_CLASS_B_PER_MONTH": "100000"
+    "THUMBNAIL_R2_MAX_CLASS_A_PER_MONTH": "30000",
+    "THUMBNAIL_R2_MAX_CLASS_B_PER_MONTH": "60000"
   },
 
   "r2_buckets": [

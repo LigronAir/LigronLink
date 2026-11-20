@@ -3,8 +3,14 @@ import { THUMBNAIL_POLICY, reserveR2Operation, retainLatestSnapshots, utcMonthKe
 // Autoridad única por cuenta: evita que dos actualizaciones reserven la misma
 // cuota o conserven más de tres objetos del mismo origen.
 export class ThumbnailHub {
-    constructor(ctx) {
+    constructor(ctx, env = {}) {
         this.ctx = ctx;
+        this.limits = {
+            maxR2ClassAOperationsPerMonth: positiveInt(env.THUMBNAIL_R2_MAX_CLASS_A_PER_MONTH,
+                THUMBNAIL_POLICY.maxR2ClassAOperationsPerMonth),
+            maxR2ClassBOperationsPerMonth: positiveInt(env.THUMBNAIL_R2_MAX_CLASS_B_PER_MONTH,
+                THUMBNAIL_POLICY.maxR2ClassBOperationsPerMonth),
+        };
         ctx.blockConcurrencyWhile(async () => {
             ctx.storage.sql.exec(`CREATE TABLE IF NOT EXISTS thumbnail_usage (month TEXT PRIMARY KEY, class_a INTEGER NOT NULL, class_b INTEGER NOT NULL);`);
             ctx.storage.sql.exec(`CREATE TABLE IF NOT EXISTS thumbnail_history (key TEXT PRIMARY KEY, value TEXT NOT NULL);`);
@@ -22,7 +28,7 @@ export class ThumbnailHub {
     async reserve(accountId, originKey, nowMs = Date.now()) {
         const month = utcMonthKey(new Date(nowMs));
         const usage = Array.from(this.ctx.storage.sql.exec(`SELECT class_a AS classA, class_b AS classB FROM thumbnail_usage WHERE month=?`, month))[0] || { classA: 0, classB: 0 };
-        const next = reserveR2Operation(usage, "put");
+        const next = reserveR2Operation(usage, "put", this.limits);
         if (!next) return { ok: false, code: "R2_BUDGET_EXHAUSTED" };
         this.ctx.storage.sql.exec(`INSERT INTO thumbnail_usage(month,class_a,class_b) VALUES(?,?,?) ON CONFLICT(month) DO UPDATE SET class_a=excluded.class_a,class_b=excluded.class_b`, month, next.classA, next.classB);
         const key = `origin:${accountId}:${originKey}`;
@@ -42,9 +48,14 @@ export class ThumbnailHub {
     async reserveRead(nowMs = Date.now()) {
         const month = utcMonthKey(new Date(nowMs));
         const usage = Array.from(this.ctx.storage.sql.exec(`SELECT class_a AS classA, class_b AS classB FROM thumbnail_usage WHERE month=?`, month))[0] || { classA: 0, classB: 0 };
-        const next = reserveR2Operation(usage, "get");
+        const next = reserveR2Operation(usage, "get", this.limits);
         if (!next) return { ok: false, code: "R2_BUDGET_EXHAUSTED" };
         this.ctx.storage.sql.exec(`INSERT INTO thumbnail_usage(month,class_a,class_b) VALUES(?,?,?) ON CONFLICT(month) DO UPDATE SET class_a=excluded.class_a,class_b=excluded.class_b`, month, next.classA, next.classB);
         return { ok: true };
     }
+}
+
+function positiveInt(value, fallback) {
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }

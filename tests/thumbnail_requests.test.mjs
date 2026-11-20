@@ -178,7 +178,7 @@ test("deduplicates retries, rejects conflicting keys and limits concurrent refre
 
     const expired = Date.now() - 1;
     sqlite.prepare("UPDATE thumbnail_requests SET created_at_ms = ?, expires_at_ms = ?")
-        .run(expired - THUMBNAIL_POLICY.requestLifetimeMs, expired);
+        .run(expired - THUMBNAIL_POLICY.minRefreshIntervalMs, expired);
     sqlite.prepare("UPDATE thumbnail_captures SET deadline_at = ?").run(expired);
     const expiredBatch = await (await call("GET", { batch: batch.batch_id })).json();
     assert.equal(expiredBatch.status, "EXPIRED");
