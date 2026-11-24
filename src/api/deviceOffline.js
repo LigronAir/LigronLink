@@ -4,7 +4,8 @@
 // src/api/deviceOffline.js
 // ==========================================================
 
-import { setDeviceStatus } from "../database/devices.js";
+import { findDeviceByUuid, setDeviceStatus } from "../database/devices.js";
+import { notifyPoolDeviceChanged } from "../realtime/poolEventHub.js";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "https://ligronair.tv",
@@ -75,11 +76,26 @@ export async function deviceOffline(request, env) {
         // del dispositivo. No modifica identidad,
         // usuario, alias ni dirección IP.
 
+        const device = await findDeviceByUuid(
+            env.DB,
+            uuid
+        );
+
         await setDeviceStatus(
             env.DB,
             uuid,
             "OFFLINE"
         );
+
+        // El cierre controlado no puede esperar al timeout de presencia: las
+        // pestañas Pool abiertas deben volver a consultar inmediatamente y
+        // dejar de presentar la ruta como si Native siguiera recibiendo.
+        if (device?.usuario_id) {
+            await notifyPoolDeviceChanged(env, device.usuario_id, {
+                device_uuid: uuid,
+                signature: JSON.stringify({ status: "OFFLINE" })
+            });
+        }
 
         // --------------------------------------------------
         // OK
