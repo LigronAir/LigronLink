@@ -463,19 +463,15 @@ export async function deleteDevice(db, deviceId, usuarioId) {
     // Los receptores y el estado operativo referencian el equipo. D1 aplica
     // las claves foráneas, por lo que deben retirarse antes que el padre.
     // También se liberan reservas hechas por una Pi que se elimina.
-    try {
-        await db.prepare(
-            `DELETE FROM device_runtime_status
-             WHERE device_uuid = ?1 OR target_device_uuid = ?1`
-        ).bind(device.uuid).run();
-    }
-    catch (error) {
-        if (!String(error?.message || error).includes("no such table")) {
-            throw error;
-        }
-    }
-
     const resultados = await db.batch([
+        db.prepare(`DELETE FROM device_remote_commands
+                    WHERE usuario_id = ?2 AND (sender_device_uuid = ?1 OR target_device_uuid = ?1)`).bind(device.uuid, usuarioId),
+        db.prepare(`DELETE FROM device_runtime_status
+                    WHERE device_uuid = ?1 OR target_device_uuid = ?1`).bind(device.uuid),
+        db.prepare(`DELETE FROM device_recovery_authorizations WHERE device_uuid = ?1`).bind(device.uuid),
+        db.prepare(`DELETE FROM device_recovery_credentials WHERE device_uuid = ?1`).bind(device.uuid),
+        db.prepare(`DELETE FROM device_credentials WHERE device_uuid = ?1`).bind(device.uuid),
+        db.prepare(`DELETE FROM device_pairings WHERE device_uuid = ?1 AND owner_user_id = ?2`).bind(device.uuid, usuarioId),
         db.prepare(
             `UPDATE srt_destinos
              SET reservado_por_uuid = NULL,
